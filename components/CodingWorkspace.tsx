@@ -24,6 +24,9 @@ type Exercise = {
   description: string;
   functionSignature: string;
   requirements: readonly string[];
+  tip: string;
+  sampleImage: readonly number[];
+  sampleLabel: number;
   starterCode: string;
 };
 
@@ -109,7 +112,7 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
 
       setRunAction("launching");
       await controller.sendCommand(
-        "python -m pytest -q --disable-warnings --maxfail=1",
+        "python -m pytest -q -s --disable-warnings --maxfail=1",
       );
     } catch (error) {
       controller.writeNotice(
@@ -179,6 +182,29 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
             <h1>{exercise.title}</h1>
             <p className={styles.description}>{exercise.description}</p>
 
+            <h2>Example training image</h2>
+            <div className={styles.digitExample}>
+              <div
+                className={styles.digitGrid}
+                role="img"
+                aria-label={`An 8 by 8 grayscale image of handwritten digit ${exercise.sampleLabel}`}
+              >
+                {exercise.sampleImage.map((brightness, index) => (
+                  <span
+                    className={styles.digitPixel}
+                    key={index}
+                    style={{
+                      backgroundColor: `rgba(248, 250, 252, ${0.04 + (brightness / 16) * 0.96})`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className={styles.digitLabel}>
+                <span>Known label</span>
+                <strong>{exercise.sampleLabel}</strong>
+              </div>
+            </div>
+
             <h2>Function</h2>
             <code className={styles.signature}>{exercise.functionSignature}</code>
 
@@ -191,7 +217,7 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
 
             <div className={styles.tip}>
               <span className={styles.tipLabel}>Tip</span>
-              The default <code>LogisticRegression</code> settings are sufficient for this dataset.
+              {exercise.tip}
             </div>
           </div>
         </aside>

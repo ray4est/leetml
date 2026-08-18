@@ -256,6 +256,51 @@
   text-transform: uppercase;
 }
 
+.digitExample {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #080c12;
+}
+
+.digitGrid {
+  display: grid;
+  width: 116px;
+  height: 116px;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 7px;
+  background: #030507;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
+.digitPixel {
+  border-radius: 1px;
+}
+
+.digitLabel {
+  display: grid;
+  gap: 5px;
+  color: var(--subtle);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.digitLabel strong {
+  color: #f8fafc;
+  font-size: 34px;
+  line-height: 1;
+}
+
 .signature {
   display: block;
   overflow-x: auto;

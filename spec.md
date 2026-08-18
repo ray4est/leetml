@@ -33,7 +33,7 @@ The v0 is one complete coding, shell, and testing loop for a single hard-coded s
 4. xterm.js connects to a bash PTY in `/workspace`; normal commands, Ctrl+C, ANSI output, and terminal resizing work.
 5. Edit `solution.py` in Monaco Editor.
 6. Click **Run tests**. Any foreground command is interrupted, Monaco is saved to `/workspace/solution.py`, and the browser sends the pytest command through the PTY.
-7. The command and live pytest output appear in the same terminal.
+7. The command, live pytest output, accuracy, most-confused pair, and misclassified digit art appear in the same terminal.
 8. Files remain in the healthy Sandbox for later commands and test runs.
 9. The Sandbox terminates on logout, after one hour without terminal input or output, on infrastructure failure, or at its 24-hour absolute lifetime.
 
@@ -56,11 +56,16 @@ The v0 is one complete coding, shell, and testing loop for a single hard-coded s
 
 ### Exercise
 
-Implement a function that trains a `LogisticRegression` classifier and returns predictions for a fixed toy dataset. Tests verify:
+Build a toy parcel-sorter digit reader using scikit-learn's built-in handwritten digits dataset. Each input is an 8 × 8 grayscale image flattened to 64 pixel features. The deterministic stratified split contains 1,347 training images and 450 test images.
 
-- The output has the expected shape.
-- Predictions contain valid classes.
-- Predictions meet a minimum accuracy threshold.
+Implement `predict_digits(X_train, y_train, X_test)`. The starter imports `KNeighborsClassifier`, while any scikit-learn classifier is allowed. Tests verify:
+
+- The output contains exactly one prediction for every test image.
+- Predictions are integer labels from 0 through 9.
+- The function does not mutate the supplied arrays.
+- Predictions reach at least 96% accuracy.
+
+Every complete evaluation prints the score, the most frequent actual-to-predicted confusion, and three misclassified 8 × 8 images using terminal-safe grayscale characters. The problem panel also shows a pixel-grid example with its known label.
 
 ## Public interfaces
 
@@ -80,9 +85,9 @@ Implement a function that trains a `LogisticRegression` classifier and returns p
 ### Terminal protocol
 
 - Browser messages are JSON: `input` with base64 bytes, `resize` with bounded rows and columns, or `interrupt`.
-- Bridge messages are JSON: base64 `output`, `state` (`idle` or `busy`), `timeout`, or `error`.
+- Bridge messages are JSON: base64 `output`, `state` (`idle` or `busy`), `timeout`, inactivity `shutdown`, or `error`.
 - The bridge accepts only a Modal-verified session identifier matching `LEETML_SESSION_ID`.
-- Run Tests sends `python -m pytest -q --disable-warnings --maxfail=1` through the protocol after saving Monaco.
+- Run Tests sends `python -m pytest -q -s --disable-warnings --maxfail=1` through the protocol after saving Monaco. Capture is disabled so educational feedback printed by the tests remains visible.
 
 ## Authentication and terminal security
 
@@ -103,7 +108,7 @@ Implement a function that trains a `LogisticRegression` classifier and returns p
 
 - The Python PTY bridge is the Sandbox entrypoint and exposes only the Connect Token port.
 - An in-sandbox exec readiness probe connects to localhost port 8080 before terminal credentials are returned.
-- Existing Sandboxes without the `terminal-v6` runtime tag are terminated and replaced during migration.
+- Existing Sandboxes without the `terminal-v6` runtime tag or current exercise ID are terminated and replaced, so an exercise change cannot retain stale solution or test files.
 - Concurrent preparation requests in one application process share a promise; the named Modal Sandbox prevents duplicate creation across processes.
 - The canonical public tests are refreshed at preparation, while an existing solution is preserved until Monaco is explicitly saved.
 - A browser reconnect starts a new bash process in the same Sandbox; running jobs and shell history do not survive.
@@ -127,4 +132,4 @@ Implement a function that trains a `LogisticRegression` classifier and returns p
 
 ## Definition of done
 
-`Sign in → Sandbox and PTY bridge become ready → Use the interactive shell → Edit Monaco → Run Tests saves solution.py and types pytest into the PTY → Live output appears → Files and Sandbox remain available until inactivity or sign-out`
+`Sign in → Sandbox and PTY bridge become ready → Inspect an 8 × 8 digit → Edit Monaco → Run Tests saves solution.py and types pytest into the PTY → Score and visible mistakes appear → Iterate on the model → Files and Sandbox remain available until inactivity or sign-out`

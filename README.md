@@ -61,7 +61,9 @@ There are no individual accounts in v0. Changing `APP_ACCESS_PASSWORD` does not 
 
 When an authenticated workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session, warms Python, NumPy, and scikit-learn, and returns a Modal Connect Token for the sandbox terminal bridge. xterm.js then connects directly to a bash PTY in `/workspace`.
 
-Run Tests first interrupts any foreground process, saves Monaco through `POST /api/solution`, and sends `python -m pytest -q --disable-warnings --maxfail=1` into that PTY. Terminal edits do not flow back to Monaco; the next Run Tests overwrites `solution.py` with the Monaco buffer.
+Run Tests first interrupts any foreground process, saves Monaco through `POST /api/solution`, and sends `python -m pytest -q -s --disable-warnings --maxfail=1` into that PTY. Terminal edits do not flow back to Monaco; the next Run Tests overwrites `solution.py` with the Monaco buffer.
+
+The first exercise is a handwritten digit reader using scikit-learn's built-in 8 × 8 digits dataset. A fixed split supplies 1,347 labelled training images and 450 test images. Tests print the current accuracy, the most-confused digit pair, and three mistakes as grayscale terminal art so each run gives concrete feedback.
 
 The bridge exits after one hour without terminal input or output, including when an idle browser leaves its WebSocket open. The sandbox also has Modal's one-hour idle fallback and a 24-hour absolute lifetime. Logout terminates it immediately. Reconnecting starts a fresh bash process while the current Sandbox and its files still exist.
 
@@ -81,12 +83,14 @@ Only one terminal connection is active per Sandbox. Opening it in a newer tab re
 1. Sign in and wait for a colored `ray@leetml` prompt.
 2. Run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
 3. Run `python -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)"` and confirm outbound networking is blocked.
-4. Leave the starter solution unchanged, select **Run tests**, and observe the pytest command and failure live in the terminal.
-5. Implement `train_and_predict`, rerun, and confirm all three tests pass.
-6. Run `sleep 60`, then select **Run tests** and confirm the sleep command is interrupted before pytest starts.
-7. Reload the page and confirm a fresh prompt opens and `/workspace/solution.py` still exists.
-8. Open a second tab and confirm it takes over the terminal; use **Reconnect terminal** in the first tab to take it back.
-9. Sign out and confirm a later sign-in provisions a new Sandbox.
+4. Leave the starter solution unchanged, select **Run tests**, and observe the pytest command and `NotImplementedError` live in the terminal.
+5. Implement `predict_digits` by fitting the model and returning its predictions.
+6. Rerun and confirm all four tests pass, the score reaches 96%, and three misclassified digits appear as terminal art.
+7. Change `n_neighbors` or `weights`, rerun, and compare the score and visible mistakes.
+8. Run `sleep 60`, then select **Run tests** and confirm the sleep command is interrupted before pytest starts.
+9. Reload the page and confirm a fresh prompt opens and `/workspace/solution.py` still exists.
+10. Open a second tab and confirm it takes over the terminal; use **Reconnect terminal** in the first tab to take it back.
+11. Sign out and confirm a later sign-in provisions a new Sandbox.
 
 ## Development checks
 

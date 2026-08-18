@@ -10,7 +10,7 @@ import {
   type Sandbox,
 } from "modal";
 
-import { logisticRegressionExercise } from "@/lib/exercise";
+import { handwrittenDigitExercise } from "@/lib/exercise";
 import {
   TERMINAL_BRIDGE_SOURCE,
   TERMINAL_COMMAND_TIMEOUT_SECONDS,
@@ -101,7 +101,10 @@ async function findSessionSandbox(sessionId: string) {
     }
 
     const tags = await sandbox.getTags();
-    if (tags.runtime !== RUNTIME_VERSION) {
+    if (
+      tags.runtime !== RUNTIME_VERSION ||
+      tags.exercise !== handwrittenDigitExercise.id
+    ) {
       await sandbox.terminate();
       return null;
     }
@@ -148,7 +151,7 @@ async function createSessionSandbox(sessionId: string) {
       workdir: WORKDIR,
       tags: {
         app: "leetml",
-        exercise: logisticRegressionExercise.id,
+        exercise: handwrittenDigitExercise.id,
         runtime: RUNTIME_VERSION,
         session: sessionId,
       },
@@ -190,13 +193,13 @@ async function getOrCreateSessionSandbox(sessionId: string) {
 }
 
 async function initializeWorkspace(sandbox: Sandbox) {
-  await sandbox.filesystem.writeText(logisticRegressionExercise.testSource, TEST_PATH);
+  await sandbox.filesystem.writeText(handwrittenDigitExercise.testSource, TEST_PATH);
 
   try {
     await sandbox.filesystem.stat(SOLUTION_PATH);
   } catch (error) {
     if (!(error instanceof SandboxFilesystemNotFoundError)) throw error;
-    await sandbox.filesystem.writeText(logisticRegressionExercise.starterCode, SOLUTION_PATH);
+    await sandbox.filesystem.writeText(handwrittenDigitExercise.starterCode, SOLUTION_PATH);
   }
 }
 
