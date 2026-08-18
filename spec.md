@@ -8,6 +8,8 @@
 - **Terminal:** xterm.js
 - **Runtime and execution environment:** Modal Sandboxes
 - **Sandbox language and packages:** Python 3.12, NumPy, scikit-learn, and pytest
+- **Authentication:** Shared passphrase with HMAC-SHA256 signed, HTTP-only sessions
+- **Cryptography:** Node.js built-in `crypto`; no authentication service or database
 - **Styling:** CSS Modules and global CSS tokens
 - **State:** Local React state; no database in v0
 
@@ -23,12 +25,13 @@ The v0 is one complete coding-and-testing loop for a single hard-coded scikit-le
 
 ### User flow
 
-1. Open the exercise and its starter code.
-2. Edit `solution.py` in Monaco Editor.
-3. Click **Run tests**.
-4. The backend creates a fresh Modal Sandbox and runs the submission with pytest.
-5. stdout, stderr, and the test results appear in xterm.js.
-6. The application displays pass or fail and terminates the sandbox.
+1. Enter the shared family passphrase.
+2. Open the exercise and its starter code.
+3. Edit `solution.py` in Monaco Editor.
+4. Click **Run tests**.
+5. The backend verifies the session, creates a fresh Modal Sandbox, and runs the submission with pytest.
+6. stdout, stderr, and the test results appear in xterm.js.
+7. The application displays pass or fail and terminates the sandbox.
 
 ### Included
 
@@ -37,6 +40,9 @@ The v0 is one complete coding-and-testing loop for a single hard-coded scikit-le
 - One public pytest test file.
 - A Modal image with pinned versions of Python, scikit-learn, and pytest.
 - One backend execution endpoint.
+- A shared-passphrase login for exactly two trusted users.
+- A signed 30-day session and a sign-out action.
+- Authentication checks on both the workspace page and execution endpoint.
 - A 30-second execution timeout.
 - A disabled **Run tests** button while execution is in progress.
 - Basic execution and infrastructure error reporting.
@@ -50,9 +56,28 @@ Implement a function that trains a `LogisticRegression` classifier and returns p
 - Predictions contain valid classes.
 - Predictions meet a minimum accuracy threshold.
 
-### Non-goals
+### Minimal authentication design
 
-- Authentication or user accounts.
+- `APP_ACCESS_PASSWORD` stores a unique shared passphrase of at least 20 characters.
+- `SESSION_SECRET` stores at least 32 random bytes used to sign sessions.
+- The passphrase is submitted only to `POST /api/login`, limited to 256 characters, checked with a timing-safe comparison, and never placed in a cookie.
+- Login and logout POST requests must be same-origin.
+- A successful login sets `leetml_session` to `v1.<expiry>.<nonce>.<signature>`, where the signature is HMAC-SHA256 over the preceding fields.
+- Sessions expire after 30 days. The cookie is `HttpOnly`, `SameSite=Strict`, `Path=/`, high priority, and `Secure` in production.
+- The home page redirects unauthenticated visitors to `/login` before rendering the editor.
+- `POST /api/run` returns `401` before parsing code or contacting Modal when the session is absent, expired, or invalid.
+- Missing or weak authentication environment variables fail closed with `503` from authentication-sensitive API routes.
+- The client redirects to `/login?reason=expired` if its session expires during a run.
+
+### Authentication non-goals
+
+- Individual identities, email addresses, roles, or account recovery.
+- OAuth, magic links, an authentication provider, a database, or Redis.
+- Password reset UI, session management UI, CAPTCHA, or per-user quotas.
+- Immediate session revocation when only the passphrase changes. Rotating `SESSION_SECRET` revokes all sessions.
+
+### Other non-goals
+
 - A database or saved submissions.
 - Multiple exercises.
 - Hidden tests.
@@ -67,4 +92,4 @@ Implement a function that trains a `LogisticRegression` classifier and returns p
 
 The following loop works reliably:
 
-`Edit code → Run tests → Modal executes pytest → Output appears in xterm.js → Pass/fail appears`
+`Sign in → Edit code → Run tests → Modal executes pytest → Output appears in xterm.js → Pass/fail appears → Sign out`

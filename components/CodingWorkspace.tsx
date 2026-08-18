@@ -87,6 +87,12 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
+
+      if (response.status === 401) {
+        window.location.replace("/login?reason=expired");
+        return;
+      }
+
       const payload: unknown = await response.json();
 
       if (!isRunResponse(payload)) {
@@ -145,6 +151,11 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
             </span>
             {status === "running" ? "Running tests…" : "Run tests"}
           </button>
+          <form action="/api/logout" method="post">
+            <button className={styles.signOutButton} type="submit">
+              Sign out
+            </button>
+          </form>
         </div>
       </header>
 

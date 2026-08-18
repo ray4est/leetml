@@ -1,3 +1,4 @@
+import { AuthConfigurationError, hasValidSession } from "@/lib/auth";
 import { runSubmission } from "@/lib/modal";
 
 export const runtime = "nodejs";
@@ -24,6 +25,19 @@ function errorResponse(message: string, status: number, durationMs = 0, output =
 export async function POST(request: Request) {
   const startedAt = Date.now();
   let body: RunRequest;
+
+  try {
+    if (!(await hasValidSession())) {
+      return errorResponse("Authentication is required.", 401);
+    }
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) {
+      console.error(error.message);
+      return errorResponse("Authentication is not configured.", 503);
+    }
+
+    throw error;
+  }
 
   try {
     body = (await request.json()) as RunRequest;
