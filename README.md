@@ -59,7 +59,9 @@ There are no individual accounts in v0. Changing `APP_ACCESS_PASSWORD` does not 
 
 ## Runtime behavior
 
-For an authenticated session, `POST /api/run` accepts a JSON object containing a non-empty `code` string. The server verifies authentication before parsing the submission or contacting Modal, then creates a fresh Modal Sandbox, writes the solution and public pytest file, runs the tests, collects the output, and terminates the sandbox.
+When an authenticated workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session and warms Python, NumPy, and scikit-learn before the user runs tests. `POST /api/run` verifies the same session before parsing the submission or contacting Modal, writes each run into a unique directory, executes pytest, and keeps a healthy sandbox available for later runs.
+
+The sandbox terminates automatically after one hour without an active command, stdin write, or tunnel connection. It also has a 24-hour absolute lifetime. Logout and infrastructure failures terminate it immediately; a later workspace visit transparently creates a replacement.
 
 Each sandbox has:
 
@@ -67,6 +69,7 @@ Each sandbox has:
 - One CPU with a hard one-CPU limit
 - 1 GiB reserved memory and a 2 GiB hard limit
 - A 30-second execution limit
+- A one-hour inactivity timeout and 24-hour absolute sandbox lifetime
 - Network access disabled
 - A 100 KiB output limit
 

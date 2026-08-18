@@ -1,4 +1,8 @@
-import { AuthConfigurationError, hasValidSession } from "@/lib/auth";
+import {
+  AuthConfigurationError,
+  getAuthenticatedSession,
+  type AuthenticatedSession,
+} from "@/lib/auth";
 import { runSubmission } from "@/lib/modal";
 
 export const runtime = "nodejs";
@@ -25,9 +29,12 @@ function errorResponse(message: string, status: number, durationMs = 0, output =
 export async function POST(request: Request) {
   const startedAt = Date.now();
   let body: RunRequest;
+  let session: AuthenticatedSession | null;
 
   try {
-    if (!(await hasValidSession())) {
+    session = await getAuthenticatedSession();
+
+    if (!session) {
       return errorResponse("Authentication is required.", 401);
     }
   } catch (error) {
@@ -54,7 +61,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await runSubmission(body.code);
+    const result = await runSubmission(body.code, session.id);
     return Response.json({
       status: result.exitCode === 0 ? ("passed" as const) : ("failed" as const),
       ...result,

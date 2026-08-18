@@ -86,6 +86,7 @@
   background: var(--subtle);
 }
 
+.status_preparing .statusDot,
 .status_running .statusDot {
   background: var(--warning);
   box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.11);
@@ -425,6 +426,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .status_preparing .statusDot,
   .status_running .statusDot {
     animation: none;
   }

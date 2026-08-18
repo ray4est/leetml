@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./CodingWorkspace.module.css";
 
 const CodeEditor = dynamic(
@@ -14,7 +14,7 @@ const OutputConsole = dynamic(
   { ssr: false, loading: () => <PanelLoading label="Loading console…" /> },
 );
 
-type RunStatus = "ready" | "running" | "passed" | "failed" | "error";
+type RunStatus = "preparing" | "ready" | "running" | "passed" | "failed" | "error";
 
 type Exercise = {
   title: string;
@@ -39,6 +39,15 @@ type RunResponse =
       durationMs: number;
     };
 
+type PrepareResponse =
+  | {
+      status: "ready";
+      durationMs: number;
+    }
+  | {
+      error: string;
+    };
+
 function PanelLoading({ label }: { label: string }) {
   return <div className={styles.loadingPanel}>{label}</div>;
 }
@@ -52,6 +61,14 @@ function isRunResponse(value: unknown): value is RunResponse {
   return status === "passed" || status === "failed" || status === "error";
 }
 
+function isPrepareResponse(value: unknown): value is PrepareResponse {
+  if (!value || typeof value !== "object") return false;
+  return (
+    ("status" in value && value.status === "ready" && "durationMs" in value) ||
+    ("error" in value && typeof value.error === "string")
+  );
+}
+
 function formatDuration(durationMs: number) {
   if (durationMs < 1_000) {
     return `${durationMs} ms`;
@@ -62,11 +79,60 @@ function formatDuration(durationMs: number) {
 
 export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
   const [code, setCode] = useState(exercise.starterCode);
-  const [status, setStatus] = useState<RunStatus>("ready");
-  const [output, setOutput] = useState("Ready. Edit the solution, then run the tests.");
+  const [status, setStatus] = useState<RunStatus>("preparing");
+  const [output, setOutput] = useState("Preparing your session sandbox…");
   const [durationMs, setDurationMs] = useState<number | null>(null);
 
+  useEffect(() => {
+    let active = true;
+
+    async function prepareEnvironment() {
+      try {
+        const response = await fetch("/api/prepare", { method: "POST" });
+
+        if (response.status === 401) {
+          window.location.replace("/login?reason=expired");
+          return;
+        }
+
+        const payload: unknown = await response.json();
+
+        if (!isPrepareResponse(payload)) {
+          throw new Error("The preparation service returned an unexpected response.");
+        }
+
+        if (!("status" in payload) || !response.ok) {
+          throw new Error("error" in payload ? payload.error : "Unable to prepare the sandbox.");
+        }
+
+        if (!active) return;
+
+        setStatus("ready");
+        setDurationMs(payload.durationMs);
+        setOutput(
+          `Environment ready in ${formatDuration(payload.durationMs)}. Edit the solution, then run the tests.`,
+        );
+      } catch (error) {
+        if (!active) return;
+
+        setStatus("error");
+        setDurationMs(null);
+        setOutput(
+          `Sandbox prewarming failed. Run tests will retry on demand.\n\n${
+            error instanceof Error ? error.message : "Unable to reach the preparation service."
+          }`,
+        );
+      }
+    }
+
+    void prepareEnvironment();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const statusLabel = useMemo(() => {
+    if (status === "preparing") return "Preparing";
     if (status === "running") return "Running";
     if (status === "passed") return "Passed";
     if (status === "failed") return "Failed";
@@ -75,11 +141,11 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
   }, [status]);
 
   async function runTests() {
-    if (status === "running") return;
+    if (status === "running" || status === "preparing") return;
 
     setStatus("running");
     setDurationMs(null);
-    setOutput("$ python -m pytest -q\n\nStarting an isolated sandbox…");
+    setOutput("$ python -m pytest -q\n\nUsing your session sandbox…");
 
     try {
       const response = await fetch("/api/run", {
@@ -144,12 +210,16 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
             className={styles.runButton}
             type="button"
             onClick={runTests}
-            disabled={status === "running"}
+            disabled={status === "running" || status === "preparing"}
           >
             <span className={styles.playIcon} aria-hidden="true">
               ▶
             </span>
-            {status === "running" ? "Running tests…" : "Run tests"}
+            {status === "preparing"
+              ? "Preparing…"
+              : status === "running"
+                ? "Running tests…"
+                : "Run tests"}
           </button>
           <form action="/api/logout" method="post">
             <button className={styles.signOutButton} type="submit">

@@ -13,6 +13,10 @@ type AuthConfig = {
   sessionSecret: string;
 };
 
+export type AuthenticatedSession = {
+  id: string;
+};
+
 export class AuthConfigurationError extends Error {
   constructor(message: string) {
     super(message);
@@ -100,11 +104,20 @@ export function verifySessionToken(token: string, now = Date.now()) {
   return signaturesMatch(signature, sign(payload, sessionSecret));
 }
 
-export async function hasValidSession() {
+export async function getAuthenticatedSession(): Promise<AuthenticatedSession | null> {
   assertAuthConfigured();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  return token ? verifySessionToken(token) : false;
+
+  if (!token || !verifySessionToken(token)) return null;
+
+  return {
+    id: digest(token).toString("hex").slice(0, 24),
+  };
+}
+
+export async function hasValidSession() {
+  return Boolean(await getAuthenticatedSession());
 }
 
 export function sessionCookieOptions() {
