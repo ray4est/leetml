@@ -3,35 +3,48 @@ import {
   AlreadyExistsError,
   ModalClient,
   NotFoundError,
+  Probe,
+  SandboxFilesystemNotFoundError,
   type App,
   type Image,
   type Sandbox,
 } from "modal";
 
 import { logisticRegressionExercise } from "@/lib/exercise";
+import {
+  TERMINAL_BRIDGE_SOURCE,
+  TERMINAL_COMMAND_TIMEOUT_SECONDS,
+  TERMINAL_IDLE_TIMEOUT_SECONDS,
+  TERMINAL_PORT,
+} from "@/lib/terminal-bridge";
 
 const APP_NAME = "leetml-v0";
 const IMAGE_NAME = "leetml-v0-runtime:latest";
 const WORKDIR = "/workspace";
-const MAX_OUTPUT_BYTES = 100 * 1024;
-const EXECUTION_TIMEOUT_MS = 30_000;
+const SOLUTION_PATH = `${WORKDIR}/solution.py`;
+const TEST_PATH = `${WORKDIR}/test_solution.py`;
+const PREPARATION_TIMEOUT_MS = 30_000;
 const SANDBOX_IDLE_TIMEOUT_MS = 60 * 60 * 1_000;
 const SANDBOX_MAX_LIFETIME_MS = 24 * 60 * 60 * 1_000;
+const RUNTIME_VERSION = "terminal-v6";
 
 type ModalResources = {
   app: App;
   image: Image;
 };
 
-export type SandboxRunResult = {
-  output: string;
-  exitCode: number;
-  durationMs: number;
-};
-
 export type SandboxPreparationResult = {
   durationMs: number;
+  terminalUrl: string;
+  terminalToken: string;
 };
+
+export class SessionSandboxUnavailableError extends Error {
+  constructor() {
+    super("The session sandbox is no longer available.");
+    this.name = "SessionSandboxUnavailableError";
+  }
+}
 
 let modalClient: ModalClient | null = null;
 let resourcesPromise: Promise<ModalResources> | null = null;
@@ -82,10 +95,18 @@ async function findSessionSandbox(sessionId: string) {
   try {
     const sandbox = await modal.sandboxes.fromName(APP_NAME, sandboxName(sessionId));
 
-    if ((await sandbox.poll()) === null) return sandbox;
+    if ((await sandbox.poll()) !== null) {
+      sandbox.detach();
+      return null;
+    }
 
-    sandbox.detach();
-    return null;
+    const tags = await sandbox.getTags();
+    if (tags.runtime !== RUNTIME_VERSION) {
+      await sandbox.terminate();
+      return null;
+    }
+
+    return sandbox;
   } catch (error) {
     if (error instanceof NotFoundError) return null;
     throw error;
@@ -101,24 +122,45 @@ async function createSessionSandbox(sessionId: string) {
   try {
     sandbox = await modal.sandboxes.create(app, image, {
       name,
-      blockNetwork: true,
+      command: ["python", "-u", "-c", TERMINAL_BRIDGE_SOURCE],
       cpu: 1,
       cpuLimit: 1,
+      env: {
+        LEETML_COMMAND_TIMEOUT_SECONDS: String(TERMINAL_COMMAND_TIMEOUT_SECONDS),
+        LEETML_IDLE_TIMEOUT_SECONDS: String(TERMINAL_IDLE_TIMEOUT_SECONDS),
+        LEETML_SESSION_ID: sessionId,
+        LEETML_TERMINAL_PORT: String(TERMINAL_PORT),
+      },
+      idleTimeoutMs: SANDBOX_IDLE_TIMEOUT_MS,
       memoryMiB: 1024,
       memoryLimitMiB: 2048,
+      outboundCidrAllowlist: [],
+      outboundDomainAllowlist: [],
+      readinessProbe: Probe.withExec(
+        [
+          "python",
+          "-c",
+          `import socket; socket.create_connection(("127.0.0.1", ${TERMINAL_PORT}), 1).close()`,
+        ],
+        { intervalMs: 250 },
+      ),
       timeoutMs: SANDBOX_MAX_LIFETIME_MS,
-      idleTimeoutMs: SANDBOX_IDLE_TIMEOUT_MS,
       workdir: WORKDIR,
       tags: {
         app: "leetml",
         exercise: logisticRegressionExercise.id,
+        runtime: RUNTIME_VERSION,
         session: sessionId,
       },
     });
 
+    await sandbox.waitUntilReady(PREPARATION_TIMEOUT_MS);
     return sandbox.sandboxId;
   } catch (error) {
-    if (!(error instanceof AlreadyExistsError)) throw error;
+    if (!(error instanceof AlreadyExistsError)) {
+      if (sandbox) await sandbox.terminate().catch(() => undefined);
+      throw error;
+    }
 
     const existing = await modal.sandboxes.fromName(APP_NAME, name);
     const sandboxId = existing.sandboxId;
@@ -147,17 +189,15 @@ async function getOrCreateSessionSandbox(sessionId: string) {
   return modal.sandboxes.fromId(sandboxId);
 }
 
-function truncateOutput(output: string) {
-  const encoded = Buffer.from(output, "utf8");
-  if (encoded.byteLength <= MAX_OUTPUT_BYTES) return output;
+async function initializeWorkspace(sandbox: Sandbox) {
+  await sandbox.filesystem.writeText(logisticRegressionExercise.testSource, TEST_PATH);
 
-  return `${encoded.subarray(0, MAX_OUTPUT_BYTES).toString("utf8")}\n\n[output truncated at 100 KiB]`;
-}
-
-function combineOutput(stdout: string, stderr: string) {
-  if (!stderr) return stdout;
-  if (!stdout) return stderr;
-  return `${stdout.trimEnd()}\n\n--- stderr ---\n${stderr}`;
+  try {
+    await sandbox.filesystem.stat(SOLUTION_PATH);
+  } catch (error) {
+    if (!(error instanceof SandboxFilesystemNotFoundError)) throw error;
+    await sandbox.filesystem.writeText(logisticRegressionExercise.starterCode, SOLUTION_PATH);
+  }
 }
 
 async function prepareSessionSandboxOnce(sessionId: string) {
@@ -166,9 +206,12 @@ async function prepareSessionSandboxOnce(sessionId: string) {
   let ready = false;
 
   try {
+    await sandbox.waitUntilReady(PREPARATION_TIMEOUT_MS);
+    await initializeWorkspace(sandbox);
+
     const process = await sandbox.exec(
       ["python", "-c", "import numpy; import sklearn"],
-      { mode: "text", timeoutMs: EXECUTION_TIMEOUT_MS, workdir: WORKDIR },
+      { mode: "text", timeoutMs: PREPARATION_TIMEOUT_MS, workdir: WORKDIR },
     );
     const [, stderr, exitCode] = await Promise.all([
       process.stdout.readText(),
@@ -180,8 +223,17 @@ async function prepareSessionSandboxOnce(sessionId: string) {
       throw new Error(`Sandbox preparation failed with exit code ${exitCode}: ${stderr}`);
     }
 
+    const credentials = await sandbox.createConnectToken({
+      port: TERMINAL_PORT,
+      userMetadata: JSON.stringify({ sessionId }),
+    });
+
     ready = true;
-    return { durationMs: Date.now() - startedAt };
+    return {
+      durationMs: Date.now() - startedAt,
+      terminalUrl: credentials.url,
+      terminalToken: credentials.token,
+    };
   } finally {
     if (ready) {
       sandbox.detach();
@@ -208,49 +260,26 @@ export async function prepareSessionSandbox(
   return preparation;
 }
 
-export async function runSubmission(
-  code: string,
-  sessionId: string,
-): Promise<SandboxRunResult> {
-  const startedAt = Date.now();
-  const sandbox = await getOrCreateSessionSandbox(sessionId);
-  const runDirectory = `${WORKDIR}/runs/${randomUUID()}`;
-  let healthy = false;
+export async function saveSessionSolution(code: string, sessionId: string) {
+  const sandbox = await findSessionSandbox(sessionId);
+  if (!sandbox) throw new SessionSandboxUnavailableError();
+
+  const temporaryPath = `${WORKDIR}/.solution-${randomUUID()}.tmp`;
 
   try {
-    await Promise.all([
-      sandbox.filesystem.writeText(code, `${runDirectory}/solution.py`),
-      sandbox.filesystem.writeText(
-        logisticRegressionExercise.testSource,
-        `${runDirectory}/test_solution.py`,
-      ),
-    ]);
-
-    const process = await sandbox.exec(
-      ["python", "-m", "pytest", "-q", "--disable-warnings", "--maxfail=1"],
-      { mode: "text", timeoutMs: EXECUTION_TIMEOUT_MS, workdir: runDirectory },
-    );
-    const [stdout, stderr, exitCode] = await Promise.all([
-      process.stdout.readText(),
-      process.stderr.readText(),
-      process.wait(),
-    ]);
-
-    healthy = true;
-    return {
-      output: truncateOutput(combineOutput(stdout, stderr)),
-      exitCode,
-      durationMs: Date.now() - startedAt,
-    };
-  } finally {
-    if (healthy) {
-      await sandbox.filesystem.remove(runDirectory, { recursive: true }).catch(() => undefined);
-      sandbox.detach();
-    } else {
-      await sandbox.terminate().catch((error: unknown) => {
-        console.error("Failed to terminate an unhealthy Modal sandbox", error);
-      });
+    await sandbox.filesystem.writeText(code, temporaryPath);
+    const process = await sandbox.exec(["mv", "-f", temporaryPath, SOLUTION_PATH], {
+      mode: "text",
+      timeoutMs: 5_000,
+      workdir: WORKDIR,
+    });
+    const exitCode = await process.wait();
+    if (exitCode !== 0) {
+      throw new Error(`Saving solution.py failed with exit code ${exitCode}.`);
     }
+  } finally {
+    await sandbox.filesystem.remove(temporaryPath).catch(() => undefined);
+    sandbox.detach();
   }
 }
 

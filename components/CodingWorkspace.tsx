@@ -1,7 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type {
+  TerminalConnectionState,
+  TerminalController,
+} from "./InteractiveTerminal";
 import styles from "./CodingWorkspace.module.css";
 
 const CodeEditor = dynamic(
@@ -9,12 +13,10 @@ const CodeEditor = dynamic(
   { ssr: false, loading: () => <PanelLoading label="Loading editor…" /> },
 );
 
-const OutputConsole = dynamic(
-  () => import("./OutputConsole").then((module) => module.OutputConsole),
-  { ssr: false, loading: () => <PanelLoading label="Loading console…" /> },
+const InteractiveTerminal = dynamic(
+  () => import("./InteractiveTerminal").then((module) => module.InteractiveTerminal),
+  { ssr: false, loading: () => <PanelLoading label="Loading terminal…" /> },
 );
-
-type RunStatus = "preparing" | "ready" | "running" | "passed" | "failed" | "error";
 
 type Exercise = {
   title: string;
@@ -25,24 +27,11 @@ type Exercise = {
   starterCode: string;
 };
 
-type RunResponse =
-  | {
-      status: "passed" | "failed";
-      output: string;
-      exitCode: number;
-      durationMs: number;
-    }
-  | {
-      status: "error";
-      output: string;
-      message: string;
-      durationMs: number;
-    };
+type RunAction = "interrupting" | "saving" | "launching" | null;
 
-type PrepareResponse =
+type SaveResponse =
   | {
-      status: "ready";
-      durationMs: number;
+      status: "saved";
     }
   | {
       error: string;
@@ -52,103 +41,54 @@ function PanelLoading({ label }: { label: string }) {
   return <div className={styles.loadingPanel}>{label}</div>;
 }
 
-function isRunResponse(value: unknown): value is RunResponse {
-  if (!value || typeof value !== "object" || !("status" in value)) {
-    return false;
-  }
-
-  const status = value.status;
-  return status === "passed" || status === "failed" || status === "error";
-}
-
-function isPrepareResponse(value: unknown): value is PrepareResponse {
+function isSaveResponse(value: unknown): value is SaveResponse {
   if (!value || typeof value !== "object") return false;
   return (
-    ("status" in value && value.status === "ready" && "durationMs" in value) ||
+    ("status" in value && value.status === "saved") ||
     ("error" in value && typeof value.error === "string")
   );
 }
 
-function formatDuration(durationMs: number) {
-  if (durationMs < 1_000) {
-    return `${durationMs} ms`;
-  }
-
-  return `${(durationMs / 1_000).toFixed(1)} s`;
-}
-
 export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
   const [code, setCode] = useState(exercise.starterCode);
-  const [status, setStatus] = useState<RunStatus>("preparing");
-  const [output, setOutput] = useState("Preparing your session sandbox…");
-  const [durationMs, setDurationMs] = useState<number | null>(null);
+  const [terminalState, setTerminalState] =
+    useState<TerminalConnectionState>("connecting");
+  const [runAction, setRunAction] = useState<RunAction>(null);
+  const terminalController = useRef<TerminalController | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function prepareEnvironment() {
-      try {
-        const response = await fetch("/api/prepare", { method: "POST" });
-
-        if (response.status === 401) {
-          window.location.replace("/login?reason=expired");
-          return;
-        }
-
-        const payload: unknown = await response.json();
-
-        if (!isPrepareResponse(payload)) {
-          throw new Error("The preparation service returned an unexpected response.");
-        }
-
-        if (!("status" in payload) || !response.ok) {
-          throw new Error("error" in payload ? payload.error : "Unable to prepare the sandbox.");
-        }
-
-        if (!active) return;
-
-        setStatus("ready");
-        setDurationMs(payload.durationMs);
-        setOutput(
-          `Environment ready in ${formatDuration(payload.durationMs)}. Edit the solution, then run the tests.`,
-        );
-      } catch (error) {
-        if (!active) return;
-
-        setStatus("error");
-        setDurationMs(null);
-        setOutput(
-          `Sandbox prewarming failed. Run tests will retry on demand.\n\n${
-            error instanceof Error ? error.message : "Unable to reach the preparation service."
-          }`,
-        );
-      }
-    }
-
-    void prepareEnvironment();
-    return () => {
-      active = false;
-    };
+  const handleControllerChange = useCallback((controller: TerminalController | null) => {
+    terminalController.current = controller;
   }, []);
 
+  const handleTerminalStateChange = useCallback((state: TerminalConnectionState) => {
+    setTerminalState(state);
+  }, []);
+
+  const displayedStatus = runAction ?? terminalState;
   const statusLabel = useMemo(() => {
-    if (status === "preparing") return "Preparing";
-    if (status === "running") return "Running";
-    if (status === "passed") return "Passed";
-    if (status === "failed") return "Failed";
-    if (status === "error") return "Error";
+    if (displayedStatus === "connecting") return "Connecting";
+    if (displayedStatus === "busy") return "Running";
+    if (displayedStatus === "interrupting") return "Interrupting";
+    if (displayedStatus === "saving") return "Saving";
+    if (displayedStatus === "launching") return "Starting tests";
+    if (displayedStatus === "disconnected") return "Disconnected";
+    if (displayedStatus === "error") return "Error";
     return "Ready";
-  }, [status]);
+  }, [displayedStatus]);
+
+  const canRunTests =
+    runAction === null && (terminalState === "ready" || terminalState === "busy");
 
   async function runTests() {
-    if (status === "running" || status === "preparing") return;
-
-    setStatus("running");
-    setDurationMs(null);
-    setOutput("$ python -m pytest -q\n\nUsing your session sandbox…");
+    const controller = terminalController.current;
+    if (!controller || !canRunTests) return;
 
     try {
-      const response = await fetch("/api/run", {
+      setRunAction("interrupting");
+      await controller.interruptAndWait();
+
+      setRunAction("saving");
+      const response = await fetch("/api/solution", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
@@ -160,30 +100,23 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
       }
 
       const payload: unknown = await response.json();
-
-      if (!isRunResponse(payload)) {
-        throw new Error("The execution service returned an unexpected response.");
+      if (!isSaveResponse(payload)) {
+        throw new Error("The source service returned an unexpected response.");
+      }
+      if (!response.ok || !("status" in payload)) {
+        throw new Error("error" in payload ? payload.error : "Unable to save solution.py.");
       }
 
-      setDurationMs(payload.durationMs);
-
-      if (payload.status === "error") {
-        setStatus("error");
-        setOutput(
-          `$ python -m pytest -q\n\n${payload.output}${payload.output ? "\n\n" : ""}${payload.message}`,
-        );
-        return;
-      }
-
-      setStatus(payload.status);
-      setOutput(`$ python -m pytest -q\n\n${payload.output || "No output returned."}`);
-    } catch (error) {
-      setStatus("error");
-      setOutput(
-        `$ python -m pytest -q\n\n${
-          error instanceof Error ? error.message : "Unable to reach the execution service."
-        }`,
+      setRunAction("launching");
+      await controller.sendCommand(
+        "python -m pytest -q --disable-warnings --maxfail=1",
       );
+    } catch (error) {
+      controller.writeNotice(
+        error instanceof Error ? error.message : "Unable to start the test run.",
+      );
+    } finally {
+      setRunAction(null);
     }
   }
 
@@ -201,25 +134,31 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
         </div>
 
         <div className={styles.actions}>
-          <div className={`${styles.status} ${styles[`status_${status}`]}`} aria-live="polite">
+          <div
+            className={`${styles.status} ${styles[`status_${displayedStatus}`]}`}
+            aria-live="polite"
+          >
             <span className={styles.statusDot} aria-hidden="true" />
             {statusLabel}
-            {durationMs !== null ? <span className={styles.duration}>{formatDuration(durationMs)}</span> : null}
           </div>
           <button
             className={styles.runButton}
             type="button"
             onClick={runTests}
-            disabled={status === "running" || status === "preparing"}
+            disabled={!canRunTests}
           >
             <span className={styles.playIcon} aria-hidden="true">
               ▶
             </span>
-            {status === "preparing"
-              ? "Preparing…"
-              : status === "running"
-                ? "Running tests…"
-                : "Run tests"}
+            {runAction === "interrupting"
+              ? "Stopping command…"
+              : runAction === "saving"
+                ? "Saving…"
+                : runAction === "launching"
+                  ? "Starting tests…"
+                  : terminalState === "connecting"
+                    ? "Connecting…"
+                    : "Run tests"}
           </button>
           <form action="/api/logout" method="post">
             <button className={styles.signOutButton} type="submit">
@@ -272,13 +211,16 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
           </div>
         </section>
 
-        <section className={`${styles.panel} ${styles.consolePanel}`} aria-label="Test output">
+        <section className={`${styles.panel} ${styles.consolePanel}`} aria-label="Terminal">
           <div className={styles.panelHeader}>
-            <span>Test output</span>
-            <span className={styles.readOnly}>Read only</span>
+            <span>Terminal</span>
+            <span className={styles.readOnly}>Interactive shell</span>
           </div>
           <div className={styles.panelContent}>
-            <OutputConsole content={output} />
+            <InteractiveTerminal
+              onControllerChange={handleControllerChange}
+              onStateChange={handleTerminalStateChange}
+            />
           </div>
         </section>
       </section>

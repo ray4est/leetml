@@ -13,7 +13,10 @@ export async function POST() {
     }
 
     const result = await prepareSessionSandbox(session.id);
-    return Response.json({ status: "ready" as const, ...result });
+    return Response.json(
+      { status: "ready" as const, ...result },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     if (error instanceof AuthConfigurationError) {
       console.error(error.message);
@@ -24,7 +27,7 @@ export async function POST() {
     const errorMessage = error instanceof Error ? error.message : "";
     const message = errorMessage.startsWith("Modal credentials")
       ? errorMessage
-      : "The execution environment could not be prepared. Try again when you run the tests.";
+      : "The interactive execution environment could not be prepared. Try reconnecting.";
 
     return Response.json({ error: message }, { status: 502 });
   }

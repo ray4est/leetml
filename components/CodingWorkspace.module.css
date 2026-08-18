@@ -86,40 +86,36 @@
   background: var(--subtle);
 }
 
-.status_preparing .statusDot,
-.status_running .statusDot {
+.status_connecting .statusDot,
+.status_busy .statusDot,
+.status_interrupting .statusDot,
+.status_saving .statusDot,
+.status_launching .statusDot {
   background: var(--warning);
   box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.11);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
-.status_passed {
+.status_ready {
   border-color: rgba(34, 197, 94, 0.28);
   color: #86efac;
   background: var(--accent-soft);
 }
 
-.status_passed .statusDot {
+.status_ready .statusDot {
   background: var(--accent);
 }
 
-.status_failed,
+.status_disconnected,
 .status_error {
   border-color: rgba(248, 113, 113, 0.3);
   color: #fca5a5;
   background: var(--danger-soft);
 }
 
-.status_failed .statusDot,
+.status_disconnected .statusDot,
 .status_error .statusDot {
   background: var(--danger);
-}
-
-.duration {
-  padding-left: 7px;
-  border-left: 1px solid currentColor;
-  opacity: 0.62;
-  font-variant-numeric: tabular-nums;
 }
 
 .runButton {
@@ -426,8 +422,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status_preparing .statusDot,
-  .status_running .statusDot {
+  .status_connecting .statusDot,
+  .status_busy .statusDot,
+  .status_interrupting .statusDot,
+  .status_saving .statusDot,
+  .status_launching .statusDot {
     animation: none;
   }
 

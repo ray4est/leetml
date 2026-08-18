@@ -17,7 +17,8 @@ if (!process.env.MODAL_TOKEN_ID || !process.env.MODAL_TOKEN_SECRET) {
     const image = modal.images
       .fromRegistry("python:3.12-slim")
       .dockerfileCommands([
-        "RUN python -m pip install --no-cache-dir numpy==2.1.3 scikit-learn==1.5.2 pytest==8.3.4",
+        "RUN apt-get update && apt-get install -y --no-install-recommends bash ncurses-term && rm -rf /var/lib/apt/lists/*",
+        "RUN python -m pip install --no-cache-dir numpy==2.1.3 scikit-learn==1.5.2 pytest==8.3.4 websockets==15.0.1",
       ]);
     const builtImage = await image.build(app);
     await builtImage.publish(IMAGE_NAME);

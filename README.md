@@ -49,7 +49,7 @@ Start the application:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), edit `solution.py`, and select **Run tests**.
+Open [http://localhost:3000](http://localhost:3000). After the terminal prompt appears, you can run normal shell commands. Edit `solution.py` in Monaco and select **Run tests** to save it and send pytest through that terminal.
 
 ## Authentication
 
@@ -59,19 +59,34 @@ There are no individual accounts in v0. Changing `APP_ACCESS_PASSWORD` does not 
 
 ## Runtime behavior
 
-When an authenticated workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session and warms Python, NumPy, and scikit-learn before the user runs tests. `POST /api/run` verifies the same session before parsing the submission or contacting Modal, writes each run into a unique directory, executes pytest, and keeps a healthy sandbox available for later runs.
+When an authenticated workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session, warms Python, NumPy, and scikit-learn, and returns a Modal Connect Token for the sandbox terminal bridge. xterm.js then connects directly to a bash PTY in `/workspace`.
 
-The sandbox terminates automatically after one hour without an active command, stdin write, or tunnel connection. It also has a 24-hour absolute lifetime. Logout and infrastructure failures terminate it immediately; a later workspace visit transparently creates a replacement.
+Run Tests first interrupts any foreground process, saves Monaco through `POST /api/solution`, and sends `python -m pytest -q --disable-warnings --maxfail=1` into that PTY. Terminal edits do not flow back to Monaco; the next Run Tests overwrites `solution.py` with the Monaco buffer.
+
+The bridge exits after one hour without terminal input or output, including when an idle browser leaves its WebSocket open. The sandbox also has Modal's one-hour idle fallback and a 24-hour absolute lifetime. Logout terminates it immediately. Reconnecting starts a fresh bash process while the current Sandbox and its files still exist.
 
 Each sandbox has:
 
 - Python 3.12 with pinned NumPy, scikit-learn, and pytest versions
 - One CPU with a hard one-CPU limit
 - 1 GiB reserved memory and a 2 GiB hard limit
-- A 30-second execution limit
+- A 10-minute limit for each foreground process group
 - A one-hour inactivity timeout and 24-hour absolute sandbox lifetime
 - Network access disabled
-- A 100 KiB output limit
+
+Only one terminal connection is active per Sandbox. Opening it in a newer tab replaces the prior shell. The terminal connection uses a bearer token returned only after application authentication; do not log or share terminal WebSocket URLs.
+
+## Manual acceptance test
+
+1. Sign in and wait for a colored `ray@leetml` prompt.
+2. Run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
+3. Run `python -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)"` and confirm outbound networking is blocked.
+4. Leave the starter solution unchanged, select **Run tests**, and observe the pytest command and failure live in the terminal.
+5. Implement `train_and_predict`, rerun, and confirm all three tests pass.
+6. Run `sleep 60`, then select **Run tests** and confirm the sleep command is interrupted before pytest starts.
+7. Reload the page and confirm a fresh prompt opens and `/workspace/solution.py` still exists.
+8. Open a second tab and confirm it takes over the terminal; use **Reconnect terminal** in the first tab to take it back.
+9. Sign out and confirm a later sign-in provisions a new Sandbox.
 
 ## Development checks
 
