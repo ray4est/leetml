@@ -5,7 +5,9 @@ import {
   browserModelAccuracy,
   digitGallery,
   predictBrowserDigit,
+  type DigitPrediction,
   type DigitSample,
+  type NearestDigit,
 } from "@/lib/browser-digit-model";
 import { DigitCanvas } from "./DigitCanvas";
 import styles from "./DigitReaderLesson.module.css";
@@ -22,12 +24,13 @@ type DigitPlaygroundProps = {
   customModelStatus: CustomModelStatus;
   model: PlaygroundModel;
   onModelChange: (model: PlaygroundModel) => void;
-  predictCustom: (pixels: readonly number[]) => Promise<number>;
+  predictCustom: (pixels: readonly number[]) => Promise<DigitPrediction>;
 };
 
 type PredictionResult = {
   digit: number;
   actual?: number;
+  neighbors?: readonly NearestDigit[];
   source: "sample" | "drawing";
 };
 
@@ -79,10 +82,11 @@ export function DigitPlayground({
     setPredicting(true);
     setError(null);
     try {
-      const digit =
+      const prediction =
         model === "builtin" ? predictBrowserDigit(activePixels) : await predictCustom(activePixels);
       setResult({
-        digit,
+        digit: prediction.digit,
+        neighbors: prediction.neighbors,
         actual: mode === "samples" ? selectedSample.label : undefined,
         source: mode === "samples" ? "sample" : "drawing",
       });
@@ -112,8 +116,8 @@ export function DigitPlayground({
         <p className={styles.eyebrow}>Playground</p>
         <h2 id="playground-title">Give the model something to read.</h2>
         <p>
-          Start with real quiz images, then draw your own. The model sees neither curves nor ink—only
-          64 brightness numbers arranged in an 8 × 8 square.
+          Start with real quiz images, then draw your own. KNN compares those 64 brightness numbers
+          with its study images and lets the three closest examples vote.
         </p>
       </div>
 
@@ -156,7 +160,7 @@ export function DigitPlayground({
               }}
             >
               <option value="builtin">
-                LeetML model · {(browserModelAccuracy * 100).toFixed(1)}%
+                LeetML KNN · {(browserModelAccuracy * 100).toFixed(1)}%
               </option>
               <option value="custom" disabled={customModelStatus.state !== "ready"}>
                 {customModelLabel}
@@ -207,13 +211,13 @@ export function DigitPlayground({
               }}
             />
             <div className={styles.machineView}>
-              <span>What the model sees</span>
+              <span>Exact model input</span>
               {drawingPixels ? (
-                <PixelGrid pixels={drawingPixels} label="Your drawing reduced to 8 by 8 pixels" />
+                <PixelGrid pixels={drawingPixels} label="Your exact eight by eight pixel drawing" />
               ) : (
                 <div className={styles.emptyPixelGrid}>8 × 8</div>
               )}
-              <p>Your drawing is cropped, centred, and squeezed into 64 numbers from 0 to 16.</p>
+              <p>Each square you paint is one of the 64 brightness numbers sent to the model.</p>
             </div>
           </div>
         )}
@@ -249,6 +253,33 @@ export function DigitPlayground({
               ) : (
                 <p>Does that match what you drew? If not, inspect the 8 × 8 version and try again.</p>
               )}
+              {result.neighbors ? (
+                <div className={styles.nearestExplanation}>
+                  <div className={styles.nearestHeading}>
+                    <span>Why this prediction?</span>
+                    <strong>Meet its k = 3 nearest study digits.</strong>
+                    <p>
+                      Each neighbour votes for its known label. A smaller distance means more
+                      similar pixels—and a stronger vote.
+                    </p>
+                  </div>
+                  <div className={styles.nearestDigits}>
+                    {result.neighbors.map((neighbor, index) => (
+                      <article key={`${index}-${neighbor.label}-${neighbor.distance}`}>
+                        <span>Neighbour {index + 1}</span>
+                        <PixelGrid
+                          pixels={neighbor.pixels}
+                          label={`Nearest study digit ${index + 1}, labelled ${neighbor.label}`}
+                        />
+                        <div>
+                          <strong>Label {neighbor.label}</strong>
+                          <small>distance {neighbor.distance.toFixed(1)}</small>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className={styles.resultPlaceholder}>The prediction will appear here.</p>

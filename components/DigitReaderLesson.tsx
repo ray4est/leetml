@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { digitGallery } from "@/lib/browser-digit-model";
+import { digitGallery, type DigitPrediction } from "@/lib/browser-digit-model";
 import { handwrittenDigitExercise, TRAIN_MODEL_COMMAND } from "@/lib/exercise";
 import { DIGIT_LAB_LOGIN_PATH } from "@/lib/routes";
 import {
@@ -40,7 +40,7 @@ type ModelStatusResponse =
   | { error: string };
 
 type SaveResponse = { status: "saved" } | { error: string };
-type PredictResponse = { digit: number } | { error: string };
+type PredictResponse = DigitPrediction | { error: string };
 
 function PanelLoading({ label }: { label: string }) {
   return <div className={styles.panelLoading}>{label}</div>;
@@ -70,11 +70,25 @@ function isSaveResponse(value: unknown): value is SaveResponse {
 }
 
 function isPredictResponse(value: unknown): value is PredictResponse {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      (("digit" in value && typeof value.digit === "number") ||
-        ("error" in value && typeof value.error === "string")),
+  if (!value || typeof value !== "object") return false;
+  if ("error" in value) return typeof value.error === "string";
+  if (!("digit" in value) || typeof value.digit !== "number") return false;
+  if (!("neighbors" in value) || value.neighbors === undefined) return true;
+  return (
+    Array.isArray(value.neighbors) &&
+    value.neighbors.length === 3 &&
+    value.neighbors.every(
+      (neighbor) =>
+        neighbor &&
+        typeof neighbor === "object" &&
+        "label" in neighbor &&
+        typeof neighbor.label === "number" &&
+        "distance" in neighbor &&
+        typeof neighbor.distance === "number" &&
+        "pixels" in neighbor &&
+        Array.isArray(neighbor.pixels) &&
+        neighbor.pixels.length === 64,
+    )
   );
 }
 
@@ -176,7 +190,7 @@ export function DigitReaderLesson({
       }
       throw new Error("error" in payload ? payload.error : "Your model could not predict.");
     }
-    return payload.digit;
+    return payload;
   }, []);
 
   const trainModel = useCallback(async () => {
@@ -236,10 +250,14 @@ export function DigitReaderLesson({
     return () => window.clearTimeout(timeout);
   }, [pendingTraining, terminalState, trainModel]);
 
-  function changeCode(nextCode: string) {
+  const changeCode = useCallback((nextCode: string) => {
     setCode(nextCode);
     window.sessionStorage.setItem(DRAFT_KEY, nextCode);
-  }
+  }, []);
+
+  const handleTerminalControllerChange = useCallback((controller: TerminalController | null) => {
+    terminalController.current = controller;
+  }, []);
 
   function requestLab(startTraining: boolean) {
     window.sessionStorage.setItem(DRAFT_KEY, code);
@@ -362,21 +380,86 @@ export function DigitReaderLesson({
         <div className={styles.learningReveal}>
           <div>
             <p className={styles.eyebrow}>Change the question</p>
-            <h3>Do not describe every rule. Show the machine examples.</h3>
+            <h3>Do not describe every rule. Remember similar examples.</h3>
             <p>
-              Give a learning algorithm thousands of images alongside their correct answers.
-              Training adjusts numbers inside a model until useful pixel patterns produce the right
-              digits. Your Python chooses how learning happens; the fitted numbers are what the model
-              learned.
+              K-nearest neighbours remembers thousands of images alongside their correct answers.
+              For a new image, it finds the three study images with the smallest pixel differences.
+              Their labels vote, with closer matches getting a stronger vote.
             </p>
           </div>
-          <div className={styles.learningFlow} aria-label="Supervised learning flow">
-            <div><span>1</span><strong>Images</strong><small>64 pixels each</small></div>
-            <b aria-hidden="true">+</b>
-            <div><span>2</span><strong>Answers</strong><small>labels 0–9</small></div>
+          <div className={styles.learningFlow} aria-label="Three-nearest-neighbours prediction flow">
+            <div><span>1</span><strong>New image</strong><small>64 pixels</small></div>
             <b aria-hidden="true">→</b>
-            <div className={styles.flowModel}><span>3</span><strong>Model</strong><small>learned patterns</small></div>
+            <div><span>2</span><strong>3 closest</strong><small>study images</small></div>
+            <b aria-hidden="true">→</b>
+            <div className={styles.flowModel}><span>3</span><strong>Vote</strong><small>predict a label</small></div>
           </div>
+        </div>
+
+        <div className={styles.dataLesson} aria-labelledby="data-lesson-title">
+          <div className={styles.dataLessonIntro}>
+            <p className={styles.eyebrow}>The data · decoded</p>
+            <h3 id="data-lesson-title">Think of it as studying for a test.</h3>
+            <p>
+              In machine learning, <code>X</code> holds the questions and <code>y</code> holds their
+              answers. Here, every question is an 8 × 8 digit image and its answer is one label from
+              0 to 9. We split both into a study pile and a test pile.
+            </p>
+          </div>
+
+          <div className={styles.dataBasics}>
+            <article>
+              <code>X</code>
+              <strong>The questions</strong>
+              <p>1,797 images. Each row contains the 64 pixel values for one digit.</p>
+            </article>
+            <span aria-hidden="true">+</span>
+            <article>
+              <code>y</code>
+              <strong>The answer key</strong>
+              <p>1,797 labels. Each label tells us which digit its matching image shows.</p>
+            </article>
+          </div>
+
+          <div className={styles.studySplit}>
+            <article className={styles.trainPile}>
+              <div className={styles.pileHeading}>
+                <span>Study time</span>
+                <strong>Learn with the answers open</strong>
+              </div>
+              <div className={styles.variablePair}>
+                <code>X_train</code>
+                <b>+</b>
+                <code>y_train</code>
+              </div>
+              <p>
+                The model receives 1,347 image-questions <em>and</em> their correct answers. KNN
+                studies by remembering these pairs so it can find similar questions later.
+              </p>
+            </article>
+
+            <article className={styles.testPile}>
+              <div className={styles.pileHeading}>
+                <span>Closed-book test</span>
+                <strong>Answer first, then get scored</strong>
+              </div>
+              <div className={styles.variablePair}>
+                <code>X_test</code>
+                <b>→</b>
+                <code>prediction</code>
+              </div>
+              <p>
+                The model sees 450 new image-questions without their answers. The teacher keeps
+                <code> y_test</code> hidden, compares it with the predictions, and calculates the
+                score.
+              </p>
+            </article>
+          </div>
+
+          <p className={styles.namingNote}>
+            Why lowercase <code>y</code>? It is the usual scikit-learn spelling: capital <code>X</code>
+            is a table of many features; lowercase <code>y</code> is one answer for each row.
+          </p>
         </div>
       </section>
 
@@ -495,9 +578,7 @@ export function DigitReaderLesson({
               </div>
             ) : (
               <InteractiveTerminal
-                onControllerChange={(controller) => {
-                  terminalController.current = controller;
-                }}
+                onControllerChange={handleTerminalControllerChange}
                 onStateChange={setTerminalState}
               />
             )}

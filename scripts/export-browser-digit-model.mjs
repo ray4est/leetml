@@ -1,4 +1,5 @@
 import { ModalClient } from "modal";
+import { writeFile } from "node:fs/promises";
 
 const APP_NAME = "leetml-v0";
 const IMAGE_NAME = "leetml-v0-runtime:latest";
@@ -8,9 +9,8 @@ import json
 
 import numpy as np
 from sklearn.datasets import load_digits
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
 
 
 digits = load_digits()
@@ -22,11 +22,9 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=digits.target,
 )
 
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-model = LogisticRegression(max_iter=5000, random_state=42)
-model.fit(X_train_scaled, y_train)
-predictions = model.predict(scaler.transform(X_test))
+model = KNeighborsClassifier(n_neighbors=3, weights="distance")
+model.fit(X_train, y_train)
+predictions = model.predict(X_test)
 
 selected = []
 for digit in range(10):
@@ -45,10 +43,8 @@ if all(predictions[index] == y_test[index] for index in selected):
 
 payload = {
     "accuracy": float(np.mean(predictions == y_test)),
-    "mean": scaler.mean_.tolist(),
-    "scale": scaler.scale_.tolist(),
-    "coefficients": model.coef_.tolist(),
-    "intercepts": model.intercept_.tolist(),
+    "trainingPixels": X_train.astype(int).tolist(),
+    "trainingLabels": y_train.astype(int).tolist(),
     "gallery": [
         {
             "id": f"sample-{position + 1}",
@@ -80,21 +76,27 @@ try {
     outboundDomainAllowlist: [],
     timeoutMs: 5 * 60 * 1_000,
   });
-  const process = await sandbox.exec(["python", "-c", EXPORT_SOURCE], {
+  const execution = await sandbox.exec(["python", "-c", EXPORT_SOURCE], {
     mode: "text",
     timeoutMs: 60_000,
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    process.stdout.readText(),
-    process.stderr.readText(),
-    process.wait(),
+    execution.stdout.readText(),
+    execution.stderr.readText(),
+    execution.wait(),
   ]);
 
   if (exitCode !== 0) {
     throw new Error(`Browser model export failed (${exitCode}): ${stderr}`);
   }
 
-  console.log(stdout.trim());
+  const payload = JSON.parse(stdout);
+  const outputUrl = new URL("../lib/browser-digit-model-data.ts", import.meta.url);
+  const source = `const browserDigitModelData = ${JSON.stringify(payload)} as const;\n\nexport default browserDigitModelData;\n`;
+  await writeFile(outputUrl, source, "utf8");
+  console.log(
+    `Exported ${payload.trainingPixels.length} KNN study images and ${payload.gallery.length} quiz images at ${(payload.accuracy * 100).toFixed(1)}% accuracy.`,
+  );
 } finally {
   await sandbox?.terminate().catch(() => undefined);
   modal.close();

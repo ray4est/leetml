@@ -68,8 +68,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const digit = await predictWithSessionModel(body.pixels, session.id);
-    return Response.json({ digit }, { headers: { "Cache-Control": "no-store" } });
+    const prediction = await predictWithSessionModel(body.pixels, session.id);
+    return Response.json(prediction, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (
       error instanceof SessionModelUnavailableError ||

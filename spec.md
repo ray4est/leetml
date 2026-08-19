@@ -14,7 +14,7 @@ The public experience must not create compute. Only an authenticated, explicit l
 - **Terminal:** xterm.js with fit support, connected to an interactive PTY over WebSocket
 - **Execution:** Modal Sandboxes and Modal Connect Tokens
 - **Python runtime:** Python 3.12, NumPy, scikit-learn, joblib, pytest, bash, and a pinned Python WebSocket server
-- **Built-in inference:** Static TypeScript logistic-regression weights and 20 held-out samples exported from scikit-learn's digits dataset
+- **Built-in inference:** A TypeScript implementation of distance-weighted 3-nearest-neighbours using a static 1,347-image training split and 20 held-out samples exported from scikit-learn's digits dataset
 - **Learner inference:** A joblib artifact loaded and executed only inside the learner's Modal Sandbox
 - **Authentication:** Shared passphrase with HMAC-SHA256-signed HTTP-only sessions
 - **Styling:** CSS Modules and global CSS tokens
@@ -26,7 +26,7 @@ The public experience must not create compute. Only an authenticated, explicit l
 
 1. Read the public problem explanation without authenticating or provisioning compute.
 2. Choose one of 20 held-out digit images or draw a digit with mouse, pen, or touch.
-3. Ask the built-in browser model to predict; for held-out images, reveal the true label as immediate feedback.
+3. Ask the built-in browser model to predict; reveal its three nearest labelled training images and, for held-out images, the true label as immediate feedback.
 4. Inspect and edit the public starter code in an inline Monaco editor.
 5. Reveal up to three progressive hints; the third contains a complete copyable solution.
 6. Choose **Start lab** or **Train my model**. If needed, authenticate and return to `/#do-it-yourself` with the tab draft intact.
@@ -40,8 +40,8 @@ The public experience must not create compute. Only an authenticated, explicit l
 ### Page structure
 
 - **Hero:** states the experiment and links to the problem.
-- **Problem:** presents the impossible rule-writing challenge, then accurately introduces supervised learning as fitting numerical state from examples and labels. Python controls the training process; the fitted model is the learned artifact.
-- **Playground:** switches between supplied test images and a drawing canvas, shows the 8 × 8 model input, selects built-in or learner model, and displays feedback.
+- **Problem:** presents the impossible rule-writing challenge; explains `X`, `y`, `X_train`, `y_train`, `X_test`, and `y_test` through a study/test analogy; then introduces KNN as finding similar labelled examples.
+- **Playground:** switches between supplied test images and a drawing canvas, shows the 8 × 8 model input, selects built-in or learner model, and displays predictions with the three nearest digits when the selected model exposes them.
 - **Do it yourself:** contains Monaco, progressive hints, the explicit compute gate, xterm.js below the editor, training status, errors, and the model-unlocked callout.
 - **Footer:** promises future experiments without presenting a fake progress system or interactive unfinished tasks.
 
@@ -49,8 +49,9 @@ The public experience must not create compute. Only an authenticated, explicit l
 
 - A responsive, accessible lesson at `/`.
 - A browser-local built-in classifier with no runtime API call.
+- The three nearest labelled study digits, distances, and weighted-vote intuition for built-in predictions.
 - Twenty balanced held-out digit samples with answers hidden until prediction.
-- Pointer-based drawing, clear control, crop/pad/centre/downsample processing, and an 8 × 8 preview.
+- A pointer-editable 8 × 8 pixel canvas, clear control, drag interpolation, and an exact model-input preview.
 - A public, editable Monaco Python file and tab-scoped draft preservation.
 - Three progressive hints with copy and insert actions on the complete solution.
 - A protected, explicitly mounted xterm.js shell in a private Modal Sandbox.
@@ -69,21 +70,15 @@ Both models use scikit-learn's built-in digits dataset. Each grayscale image is 
 
 ### Built-in model
 
-The browser model is a StandardScaler plus multinomial logistic regression exported as static TypeScript data. Its measured accuracy on the full fixed test set is about 97.8%. Prediction standardizes the 64 values, computes ten linear scores, and selects the highest. It has no server, authentication, Modal, or persistence dependency.
+The browser model mirrors `KNeighborsClassifier(n_neighbors=3, weights="distance")`. Its measured accuracy on the full fixed test set is about 98.4%. It stores the 1,347 labelled training images, measures Euclidean pixel distance to a new image, selects the three smallest distances, and combines their labels with closer neighbours receiving more voting weight. It has no server, authentication, Modal, or persistence dependency.
 
 The 20-image gallery contains two examples of each true digit. The model may be wrong; showing both prediction and answer turns errors into useful feedback rather than hiding them.
 
-### Drawing preprocessing
+### Drawing input
 
-The canvas records white strokes on black at 280 × 280 pixels. On pointer release, the browser:
+The canvas itself is 8 × 8 pixels and is enlarged with nearest-neighbour rendering plus a visible grid. Pointer presses and drags paint cells at brightness 16; line interpolation fills any cells skipped by a fast pointer movement. The resulting 64 values are sent to the model unchanged.
 
-1. finds the non-black bounding box;
-2. adds proportional padding;
-3. scales the crop into a centred 6 × 6 region of an 8 × 8 canvas;
-4. downsamples with smoothing; and
-5. maps brightness to integer values from 0 through 16.
-
-An empty canvas produces no model input and keeps prediction disabled. The transformed 8 × 8 image is visible so a poor prediction has an inspectable cause.
+An empty canvas produces no model input and keeps prediction disabled. The exact 8 × 8 input is visible so a poor prediction has an inspectable cause.
 
 ### Learner artifact
 
@@ -100,13 +95,13 @@ The starter asks the learner to split the dataset, fit a classifier, and save it
 
 There is deliberately no minimum accuracy gate in v0: a weak but structurally valid model unlocks so the learner can see its mistakes and improve it. The complete K-nearest-neighbours solution normally scores about 98.4%.
 
-Custom inference validates exactly 64 finite numbers in the range 0–16 at both the application and Python boundaries. Joblib loading occurs only inside the network-isolated learner sandbox, never in the Next.js process.
+Custom inference validates exactly 64 finite numbers in the range 0–16 at both the application and Python boundaries. When the learner artifact is a direct `KNeighborsClassifier`, the response also contains its three nearest fitted images, labels, and distances. Joblib loading occurs only inside the network-isolated learner sandbox, never in the Next.js process.
 
 ## Component responsibilities
 
 - `DigitReaderLesson` owns lesson navigation, editor draft, auth/compute gating, hints, terminal command orchestration, model status, and automatic unlock.
 - `DigitPlayground` owns input mode, sample choice, model choice, prediction state, result, and true-label feedback.
-- `DigitCanvas` owns pointer drawing and conversion to the digits dataset's 8 × 8 value shape.
+- `DigitCanvas` owns direct pointer editing of the digits dataset's 8 × 8 value shape.
 - `CodeEditor` wraps Monaco and edits the current `solution.py` buffer.
 - `InteractiveTerminal` owns Connect Token preparation, WebSocket protocol, xterm.js rendering, reconnect, interruption, and command-completion waiting.
 - The Python bridge starts bash in `/workspace`, relays PTY bytes, tracks busy/idle state, resizes, interrupts, limits foreground commands, and enforces inactivity.
@@ -145,6 +140,7 @@ Custom inference validates exactly 64 finite numbers in the range 0–16 at both
 - Accept `{ pixels: number[64] }`, where all values are finite and between 0 and 16.
 - Require both `model.joblib` and `model-meta.json`; otherwise return `409`.
 - Touch `/workspace/.leetml-activity`, execute `predict_model.py` in the sandbox, validate one integer digit, and return `{ digit }` with `Cache-Control: no-store`.
+- Return `{ digit, neighbors? }`; `neighbors` contains three `{ label, pixels, distance }` values when the model exposes KNN training data.
 - Return `400` for invalid pixels and `502` for infrastructure failures.
 
 ### Terminal protocol

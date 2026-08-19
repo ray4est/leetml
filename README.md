@@ -44,8 +44,8 @@ npm run dev
 
 The single page has three sections:
 
-1. **Problem** challenges the learner to imagine handwritten rules for recognizing every possible digit, then introduces supervised learning as training a numerical model from images and their labels.
-2. **Playground** offers 20 held-out digit images and a pointer drawing canvas. The built-in logistic-regression model runs entirely in the browser, so it is public and does not spend Modal budget. A prediction on a supplied image also reveals its true label.
+1. **Problem** challenges the learner to imagine handwritten rules for recognizing every possible digit, explains `X`, `y`, and the train/test split through a study-and-quiz analogy, then introduces three-nearest-neighbours.
+2. **Playground** offers 20 held-out digit images and a direct 8 × 8 pixel drawing canvas. The built-in distance-weighted `KNeighborsClassifier` equivalent runs entirely in the browser, so it is public and does not spend Modal budget. Every built-in prediction reveals the three closest labelled study digits; a prediction on a supplied quiz image also reveals its true label.
 3. **Do it yourself** provides an editable Monaco editor, three progressive hints, and a terminal below it. The final hint can be copied or inserted as a complete solution.
 
 Selecting **Start lab** or **Train my model** is the first action that can provision Modal. Training saves Monaco to `/workspace/solution.py` and sends this command through xterm.js:
@@ -83,14 +83,14 @@ Only one terminal connection is active per sandbox. A newer tab replaces the pre
 ## Manual acceptance test
 
 1. Open `/` signed out. Confirm the Problem, Playground, and Do it yourself sections render, and confirm the Network panel shows no request to `/api/prepare`.
-2. Pick several test images with the **LeetML model**, press **Predict digit**, and confirm each result reveals both the prediction and hidden answer.
-3. Open **Draw your own**, draw a large digit, and confirm the 8 × 8 machine view appears before predicting. Clear it and confirm prediction is disabled.
+2. Pick several test images with **LeetML KNN**, press **Predict digit**, and confirm each result reveals the prediction, hidden answer, and three nearest labelled study digits with distances.
+3. Open **Draw your own**, paint a digit directly into the 8 × 8 grid, and confirm the exact model input appears before predicting. Clear it and confirm prediction is disabled.
 4. Edit `solution.py`, reveal all three hints, and use **Use in editor**. Reload before signing in and confirm the draft remains in this tab.
 5. Press **Start lab** or **Train my model**, enter the family passphrase, and confirm you return to `/#do-it-yourself` without losing the draft.
 6. Press **Start lab** if needed. Wait for the colored `ray@leetml` prompt, then run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
 7. Restore the starter code and press **Train my model**. Confirm the terminal shows the `NotImplementedError` and the playground remains on the built-in model.
 8. Insert the complete hint and train again. Confirm the terminal reports an accuracy near 98.4%, **My model is ready** appears, and the page returns to the Playground with **My model** selected.
-9. Predict a supplied image and a drawing with **My model**. Confirm both predictions return and supplied images still reveal their true labels.
+9. Predict a supplied image and a drawing with **My model**. Confirm both predictions return, the trained KNN exposes three neighbours, and supplied images still reveal their true labels.
 10. Change `n_neighbors`, retrain, and confirm the displayed accuracy and model timestamp update.
 11. Use the terminal as a shell. Run `sleep 60`, press **Train my model**, and confirm it interrupts the foreground command before training.
 12. Reload, press **Start lab**, and confirm the existing model is still available while the sandbox is alive.

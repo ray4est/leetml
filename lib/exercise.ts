@@ -153,6 +153,26 @@ digit = int(prediction.reshape(-1)[0])
 if digit not in range(10):
     raise SystemExit("model prediction was not a digit from 0 through 9")
 
-print(json.dumps({"digit": digit}, separators=(",", ":")))
+payload = {"digit": digit}
+if all(hasattr(model, attribute) for attribute in ("kneighbors", "_fit_X", "_y")):
+    distances, indexes = model.kneighbors(values.reshape(1, -1), n_neighbors=3)
+    fitted_pixels = np.asarray(model._fit_X)
+    fitted_labels = np.asarray(model._y)
+    classes = np.asarray(getattr(model, "classes_", []))
+    neighbors = []
+    for distance, index in zip(distances[0], indexes[0]):
+        neighbor_pixels = np.asarray(fitted_pixels[index], dtype=float)
+        encoded_label = int(np.asarray(fitted_labels[index]).reshape(-1)[0])
+        neighbor_label = int(classes[encoded_label]) if classes.size else encoded_label
+        if neighbor_pixels.shape == (64,) and neighbor_label in range(10):
+            neighbors.append({
+                "label": neighbor_label,
+                "pixels": neighbor_pixels.tolist(),
+                "distance": float(distance),
+            })
+    if len(neighbors) == 3:
+        payload["neighbors"] = neighbors
+
+print(json.dumps(payload, separators=(",", ":")))
 `,
 } as const;

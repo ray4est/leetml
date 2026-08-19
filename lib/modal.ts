@@ -61,6 +61,15 @@ export type SessionModelStatus =
   | { status: "missing" }
   | { status: "ready"; accuracy: number; trainedAt: string };
 
+export type SessionModelPrediction = {
+  digit: number;
+  neighbors?: Array<{
+    label: number;
+    pixels: number[];
+    distance: number;
+  }>;
+};
+
 let modalClient: ModalClient | null = null;
 let resourcesPromise: Promise<ModalResources> | null = null;
 const sandboxCreations = new Map<string, Promise<string>>();
@@ -414,7 +423,42 @@ export async function predictWithSessionModel(pixels: readonly number[], session
       throw new SessionModelUnavailableError("The saved model returned an invalid prediction.");
     }
 
-    return payload.digit;
+    const prediction: SessionModelPrediction = { digit: payload.digit };
+    if ("neighbors" in payload && payload.neighbors !== undefined) {
+      if (
+        !Array.isArray(payload.neighbors) ||
+        payload.neighbors.length !== 3 ||
+        !payload.neighbors.every(
+          (neighbor) =>
+            neighbor &&
+            typeof neighbor === "object" &&
+            "label" in neighbor &&
+            typeof neighbor.label === "number" &&
+            Number.isInteger(neighbor.label) &&
+            neighbor.label >= 0 &&
+            neighbor.label <= 9 &&
+            "distance" in neighbor &&
+            typeof neighbor.distance === "number" &&
+            Number.isFinite(neighbor.distance) &&
+            neighbor.distance >= 0 &&
+            "pixels" in neighbor &&
+            Array.isArray(neighbor.pixels) &&
+            neighbor.pixels.length === 64 &&
+            neighbor.pixels.every(
+              (pixel: unknown) =>
+                typeof pixel === "number" &&
+                Number.isFinite(pixel) &&
+                pixel >= 0 &&
+                pixel <= 16,
+            ),
+        )
+      ) {
+        throw new SessionModelUnavailableError("The saved model returned invalid neighbours.");
+      }
+      prediction.neighbors = payload.neighbors as SessionModelPrediction["neighbors"];
+    }
+
+    return prediction;
   } finally {
     sandbox.detach();
   }

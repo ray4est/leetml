@@ -7,153 +7,139 @@ type DigitCanvasProps = {
   onPixelsChange: (pixels: number[] | null) => void;
 };
 
-function pointOnCanvas(canvas: HTMLCanvasElement, event: React.PointerEvent) {
+const GRID_SIZE = 8;
+const PIXEL_COUNT = GRID_SIZE * GRID_SIZE;
+
+function cellFromPointer(canvas: HTMLCanvasElement, event: React.PointerEvent) {
   const bounds = canvas.getBoundingClientRect();
-  return {
-    x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
-    y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
-  };
+  const column = Math.min(
+    GRID_SIZE - 1,
+    Math.max(0, Math.floor(((event.clientX - bounds.left) / bounds.width) * GRID_SIZE)),
+  );
+  const row = Math.min(
+    GRID_SIZE - 1,
+    Math.max(0, Math.floor(((event.clientY - bounds.top) / bounds.height) * GRID_SIZE)),
+  );
+  return { column, row };
 }
 
-function extractDigit(canvas: HTMLCanvasElement) {
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return null;
+function renderPixels(canvas: HTMLCanvasElement, pixels: readonly number[]) {
+  const context = canvas.getContext("2d");
+  if (!context) return;
 
-  const source = context.getImageData(0, 0, canvas.width, canvas.height);
-  let minX = canvas.width;
-  let minY = canvas.height;
-  let maxX = -1;
-  let maxY = -1;
+  const image = context.createImageData(GRID_SIZE, GRID_SIZE);
+  pixels.forEach((value, index) => {
+    const brightness = Math.round((value / 16) * 255);
+    const offset = index * 4;
+    image.data[offset] = brightness;
+    image.data[offset + 1] = brightness;
+    image.data[offset + 2] = brightness;
+    image.data[offset + 3] = 255;
+  });
+  context.putImageData(image, 0, 0);
+}
 
-  for (let y = 0; y < canvas.height; y += 1) {
-    for (let x = 0; x < canvas.width; x += 1) {
-      const brightness = source.data[(y * canvas.width + x) * 4];
-      if (brightness < 12) continue;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
+function paintLine(
+  pixels: number[],
+  from: { column: number; row: number },
+  to: { column: number; row: number },
+) {
+  let column = from.column;
+  let row = from.row;
+  const columnStep = column < to.column ? 1 : -1;
+  const rowStep = row < to.row ? 1 : -1;
+  const columnDistance = Math.abs(to.column - column);
+  const rowDistance = -Math.abs(to.row - row);
+  let error = columnDistance + rowDistance;
+
+  while (true) {
+    pixels[row * GRID_SIZE + column] = 16;
+    if (column === to.column && row === to.row) return;
+    const doubledError = error * 2;
+    if (doubledError >= rowDistance) {
+      error += rowDistance;
+      column += columnStep;
+    }
+    if (doubledError <= columnDistance) {
+      error += columnDistance;
+      row += rowStep;
     }
   }
-
-  if (maxX < minX || maxY < minY) return null;
-
-  const width = maxX - minX + 1;
-  const height = maxY - minY + 1;
-  const padding = Math.max(8, Math.round(Math.max(width, height) * 0.12));
-  const cropX = Math.max(0, minX - padding);
-  const cropY = Math.max(0, minY - padding);
-  const cropWidth = Math.min(canvas.width - cropX, width + padding * 2);
-  const cropHeight = Math.min(canvas.height - cropY, height + padding * 2);
-  const scale = Math.min(6 / cropWidth, 6 / cropHeight);
-  const targetWidth = cropWidth * scale;
-  const targetHeight = cropHeight * scale;
-
-  const tiny = document.createElement("canvas");
-  tiny.width = 8;
-  tiny.height = 8;
-  const tinyContext = tiny.getContext("2d", { willReadFrequently: true });
-  if (!tinyContext) return null;
-  tinyContext.fillStyle = "#000";
-  tinyContext.fillRect(0, 0, 8, 8);
-  tinyContext.imageSmoothingEnabled = true;
-  tinyContext.imageSmoothingQuality = "high";
-  tinyContext.drawImage(
-    canvas,
-    cropX,
-    cropY,
-    cropWidth,
-    cropHeight,
-    (8 - targetWidth) / 2,
-    (8 - targetHeight) / 2,
-    targetWidth,
-    targetHeight,
-  );
-
-  const reduced = tinyContext.getImageData(0, 0, 8, 8).data;
-  return Array.from({ length: 64 }, (_, index) =>
-    Math.round((reduced[index * 4] / 255) * 16),
-  );
 }
 
 export function DigitCanvas({ onPixelsChange }: DigitCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
+  const lastCellRef = useRef<{ column: number; row: number } | null>(null);
+  const pixelsRef = useRef<number[]>(Array(PIXEL_COUNT).fill(0));
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    context.fillStyle = "#000";
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    if (canvas) renderPixels(canvas, pixelsRef.current);
   }, []);
+
+  function paint(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const cell = cellFromPointer(canvas, event);
+    paintLine(pixelsRef.current, lastCellRef.current ?? cell, cell);
+    lastCellRef.current = cell;
+    renderPixels(canvas, pixelsRef.current);
+    onPixelsChange([...pixelsRef.current]);
+  }
 
   function beginDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
+    if (!canvas || event.button !== 0) return;
 
     event.preventDefault();
     canvas.setPointerCapture(event.pointerId);
     drawingRef.current = true;
-    const point = pointOnCanvas(canvas, event);
-    context.strokeStyle = "#fff";
-    context.fillStyle = "#fff";
-    context.lineWidth = 28;
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    context.beginPath();
-    context.arc(point.x, point.y, 14, 0, Math.PI * 2);
-    context.fill();
-    context.beginPath();
-    context.moveTo(point.x, point.y);
+    lastCellRef.current = null;
+    paint(event);
   }
 
   function continueDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawingRef.current) return;
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    const point = pointOnCanvas(canvas, event);
-    context.lineTo(point.x, point.y);
-    context.stroke();
+    event.preventDefault();
+    paint(event);
   }
 
   function finishDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawingRef.current) return;
     drawingRef.current = false;
+    lastCellRef.current = null;
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    onPixelsChange(extractDigit(canvas));
+    if (canvas?.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
   }
 
   function clearCanvas() {
+    pixelsRef.current.fill(0);
     const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    context.fillStyle = "#000";
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    if (canvas) renderPixels(canvas, pixelsRef.current);
     onPixelsChange(null);
   }
 
   return (
     <div className={styles.canvasShell}>
-      <canvas
-        ref={canvasRef}
-        className={styles.drawCanvas}
-        width={280}
-        height={280}
-        aria-label="Drawing area. Draw one digit from zero through nine."
-        onPointerDown={beginDrawing}
-        onPointerMove={continueDrawing}
-        onPointerUp={finishDrawing}
-        onPointerCancel={finishDrawing}
-      />
+      <div className={styles.pixelCanvasFrame}>
+        <canvas
+          ref={canvasRef}
+          className={styles.drawCanvas}
+          width={GRID_SIZE}
+          height={GRID_SIZE}
+          aria-label="Eight by eight drawing area. Click or drag across cells to draw one digit."
+          onPointerDown={beginDrawing}
+          onPointerMove={continueDrawing}
+          onPointerUp={finishDrawing}
+          onPointerCancel={finishDrawing}
+        />
+      </div>
       <div className={styles.canvasToolbar}>
-        <span>Draw one large digit</span>
+        <span>Paint the 64 model pixels directly</span>
         <button type="button" onClick={clearCanvas}>
-          Clear canvas
+          Clear pixels
         </button>
       </div>
     </div>

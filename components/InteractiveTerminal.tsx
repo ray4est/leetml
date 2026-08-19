@@ -330,7 +330,6 @@ export function InteractiveTerminal({
 
           if (parsed.type === "state") {
             updateState(parsed.state === "idle" ? "ready" : "busy");
-            if (parsed.state === "idle") terminal.focus();
             return;
           }
 
