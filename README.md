@@ -1,6 +1,6 @@
 # LeetML
 
-LeetML v0 is a single machine-learning coding exercise with browser-based editing and isolated test execution.
+LeetML v0 is an adventure-style machine-learning learning path with one playable coding quest, browser-based editing, and isolated test execution.
 
 ## Prerequisites
 
@@ -49,17 +49,19 @@ Start the application:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). After the terminal prompt appears, you can run normal shell commands. Edit `solution.py` in Monaco and select **Run tests** to save it and send pytest through that terminal.
+Open [http://localhost:3000](http://localhost:3000) to view the public expedition map. Select **Start first quest**, sign in, and wait for the terminal prompt. You can then run normal shell commands, edit `solution.py` in Monaco, and select **Run tests** to save it and send pytest through the terminal.
 
 ## Authentication
 
-The workspace and execution API require the shared passphrase. A successful login creates a signed, HTTP-only session cookie that lasts for 30 days. The cookie uses `SameSite=Strict`, and production deployments also mark it `Secure`.
+The learning path at `/` is public and never prepares a Modal Sandbox. The workspace at `/tasks/handwritten-digit-reader` and every execution API require the shared passphrase. A successful login creates a signed, HTTP-only session cookie that lasts for 30 days. The cookie uses `SameSite=Strict`, and production deployments also mark it `Secure`.
+
+When a protected task sends a learner to login, an allowlisted `next` value returns them directly to that task. Unknown, malformed, or external destinations fall back to `/` to prevent open redirects.
 
 There are no individual accounts in v0. Changing `APP_ACCESS_PASSWORD` does not immediately revoke existing sessions; changing `SESSION_SECRET` invalidates every session and requires both users to sign in again.
 
 ## Runtime behavior
 
-When an authenticated workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session, warms Python, NumPy, and scikit-learn, and returns a Modal Connect Token for the sandbox terminal bridge. xterm.js then connects directly to a bash PTY in `/workspace`.
+When the authenticated digit-reader workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session, warms Python, NumPy, and scikit-learn, and returns a Modal Connect Token for the sandbox terminal bridge. Merely viewing the public map does not mount the terminal or call this endpoint. xterm.js connects directly to a bash PTY in `/workspace`.
 
 Run Tests first interrupts any foreground process, saves Monaco through `POST /api/solution`, and sends `python -m pytest -q -s --disable-warnings --maxfail=1` into that PTY. Terminal edits do not flow back to Monaco; the next Run Tests overwrites `solution.py` with the Monaco buffer.
 
@@ -80,17 +82,20 @@ Only one terminal connection is active per Sandbox. Opening it in a newer tab re
 
 ## Manual acceptance test
 
-1. Sign in and wait for a colored `ray@leetml` prompt.
-2. Run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
-3. Run `python -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)"` and confirm outbound networking is blocked.
-4. Leave the starter solution unchanged, select **Run tests**, and observe the pytest command and `NotImplementedError` live in the terminal.
-5. Implement `predict_digits` by fitting the model and returning its predictions.
-6. Rerun and confirm all four tests pass, the score reaches 96%, and three misclassified digits appear as terminal art.
-7. Change `n_neighbors` or `weights`, rerun, and compare the score and visible mistakes.
-8. Run `sleep 60`, then select **Run tests** and confirm the sleep command is interrupted before pytest starts.
-9. Reload the page and confirm a fresh prompt opens and `/workspace/solution.py` still exists.
-10. Open a second tab and confirm it takes over the terminal; use **Reconnect terminal** in the first tab to take it back.
-11. Sign out and confirm a later sign-in provisions a new Sandbox.
+1. Open `/` while signed out and confirm the full learning map renders without a request to `/api/prepare`.
+2. Confirm the digit reader is the only actionable quest and the other four quests say **Being built**.
+3. Select **Start first quest**, sign in, and confirm you arrive at `/tasks/handwritten-digit-reader` rather than returning to the map.
+4. Confirm the workspace brand and **Map** control return to `/`, then reopen the quest and wait for a colored `ray@leetml` prompt.
+5. Run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
+6. Run `python -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)"` and confirm outbound networking is blocked.
+7. Leave the starter solution unchanged, select **Run tests**, and observe the pytest command and `NotImplementedError` live in the terminal.
+8. Implement `predict_digits` by fitting the model and returning its predictions.
+9. Rerun and confirm all four tests pass, the score reaches 96%, and three misclassified digits appear as terminal art.
+10. Change `n_neighbors` or `weights`, rerun, and compare the score and visible mistakes.
+11. Run `sleep 60`, then select **Run tests** and confirm the sleep command is interrupted before pytest starts.
+12. Reload the page and confirm a fresh prompt opens and `/workspace/solution.py` still exists.
+13. Open a second tab and confirm it takes over the terminal; use **Reconnect terminal** in the first tab to take it back.
+14. Sign out and confirm you return to the public map and that a later sign-in provisions a new Sandbox.
 
 ## Development checks
 

@@ -11,7 +11,7 @@
 - **Authentication:** Shared passphrase with HMAC-SHA256 signed, HTTP-only sessions
 - **Cryptography:** Node.js built-in `crypto`; no authentication service or database
 - **Styling:** CSS Modules and global CSS tokens
-- **State:** Local React state and session-scoped sandbox files; no database in v0
+- **State:** Static visual learning-path state, local React workspace state, and session-scoped sandbox files; no database in v0
 
 ## Responsibilities
 
@@ -23,23 +23,27 @@
 
 ## v0 scope
 
-The v0 is one complete coding, shell, and testing loop for a single hard-coded scikit-learn exercise.
+The v0 is a public adventure-style learning path leading into one complete coding, shell, and testing loop for a single hard-coded scikit-learn exercise.
 
 ### User flow
 
-1. Enter the shared family passphrase.
-2. Open the exercise while the backend provisions a session-specific Modal Sandbox.
-3. The backend writes the public test file, prewarms Python packages, and issues a session-bound Modal Connect Token.
-4. xterm.js connects to a bash PTY in `/workspace`; normal commands, Ctrl+C, ANSI output, and terminal resizing work.
-5. Edit `solution.py` in Monaco Editor.
-6. Click **Run tests**. Any foreground command is interrupted, Monaco is saved to `/workspace/solution.py`, and the browser sends the pytest command through the PTY.
-7. The command, live pytest output, accuracy, most-confused pair, and misclassified digit art appear in the same terminal.
-8. Files remain in the healthy Sandbox for later commands and test runs.
-9. The Sandbox terminates on logout, after one hour without terminal input or output, on infrastructure failure, or at its 24-hour absolute lifetime.
+1. Explore the public five-quest learning map without starting a Sandbox.
+2. Select the available handwritten-digit quest; the four later quests remain visibly marked **Being built**.
+3. Enter the shared family passphrase and return directly to the selected task.
+4. Open the exercise while the backend provisions a session-specific Modal Sandbox.
+5. The backend writes the public test file, prewarms Python packages, and issues a session-bound Modal Connect Token.
+6. xterm.js connects to a bash PTY in `/workspace`; normal commands, Ctrl+C, ANSI output, and terminal resizing work.
+7. Edit `solution.py` in Monaco Editor.
+8. Click **Run tests**. Any foreground command is interrupted, Monaco is saved to `/workspace/solution.py`, and the browser sends the pytest command through the PTY.
+9. The command, live pytest output, accuracy, most-confused pair, and misclassified digit art appear in the same terminal.
+10. Files remain in the healthy Sandbox for later commands and test runs.
+11. The Sandbox terminates on logout, after one hour without terminal input or output, on infrastructure failure, or at its 24-hour absolute lifetime.
 
 ### Included
 
-- A single page with Monaco Editor and an interactive xterm.js terminal side by side.
+- A public, responsive explorer-map landing page at `/` with five static quest nodes.
+- A protected workspace at `/tasks/handwritten-digit-reader` with Monaco Editor and an interactive xterm.js terminal side by side.
+- One available quest and four non-interactive **Being built** roadmap entries.
 - One hard-coded scikit-learn exercise, starter solution, and public pytest file.
 - A Modal image with pinned Python, NumPy, scikit-learn, pytest, and WebSocket dependency versions.
 - One authenticated preparation and terminal-credential endpoint.
@@ -49,10 +53,22 @@ The v0 is one complete coding, shell, and testing loop for a single hard-coded s
 - One active shell connection per Sandbox; a newer tab replaces the previous terminal.
 - A fresh bash process after reconnect while files in the Sandbox remain available.
 - A 10-minute foreground-process limit, one-hour inactivity limit, and 24-hour absolute Sandbox lifetime.
-- A shared-passphrase login for exactly two trusted users.
+- A shared-passphrase login for exactly two trusted users, with an allowlisted return path to the selected task.
 - A signed 30-day session and a sign-out action.
 - Authentication checks before parsing or performing sandbox operations.
 - Basic preparation, connection, source-save, protocol, timeout, and disconnection reporting.
+
+### Learning path
+
+The public landing page presents a CSS- and SVG-rendered explorer map. Its progress language is intentionally static: **1 trail open · 4 being built**, with an **Explorer rank: Trailhead** badge and reward previews that are not earned or persisted.
+
+1. **Pixel Pass — Handwritten Digit Reader:** image classification; available at `/tasks/handwritten-digit-reader`.
+2. **Signal Woods — Spam Shield:** text classification; roadmap only.
+3. **Forecast Falls — Bike Demand Forecaster:** regression; roadmap only.
+4. **Neural Ridge — Fashion Sorter:** neural networks; roadmap only.
+5. **Storyforge Summit — Tiny Story Generator:** nanoGPT-style language modeling; roadmap only.
+
+The active quest is a link with a **Ready to play** status. Future cards are non-interactive content with lock imagery, **Being built**, and **Trail closed** labels. Motion is decorative and disabled when `prefers-reduced-motion` is active.
 
 ### Exercise
 
@@ -96,7 +112,8 @@ Every complete evaluation prints the score, the most frequent actual-to-predicte
 - The passphrase is submitted only to `POST /api/login`, limited to 256 characters, checked with a timing-safe comparison, and never placed in a cookie.
 - A successful login sets `leetml_session` to `v1.<expiry>.<nonce>.<signature>`, where the signature is HMAC-SHA256 over the preceding fields.
 - Sessions expire after 30 days. The cookie is `HttpOnly`, `SameSite=Strict`, `Path=/`, high priority, and `Secure` in production.
-- The home page redirects unauthenticated visitors to `/login` before rendering the editor.
+- The public home page has no authentication or sandbox dependency. The digit-reader task redirects unauthenticated visitors to `/login?next=/tasks/handwritten-digit-reader` before rendering the editor.
+- Login accepts only allowlisted local return paths; all external, malformed, or unknown values fall back to `/`.
 - Missing or weak authentication environment variables fail closed with `503` from authentication-sensitive API routes.
 - The sandbox name is derived from the high-entropy signed session token, so the two users do not share files or shells.
 - The terminal token remains only in component memory, is never logged, and is revoked by Sandbox termination.
@@ -124,7 +141,8 @@ Every complete evaluation prints the score, the most frequent actual-to-predicte
 
 - Individual identities, email addresses, roles, account recovery, OAuth, or a database.
 - Saved submissions after Sandbox termination.
-- Multiple exercises, hidden tests, a file explorer, or multiple Monaco editor tabs.
+- Implemented exercises beyond the digit reader, hidden tests, a file explorer, or multiple Monaco editor tabs. Future quest cards are visual roadmap entries only.
+- Persisted XP, ranks, quest completion, unlocks, or per-user learning progress.
 - Two-way synchronization from shell file edits back into Monaco; the next Run Tests overwrites `solution.py` with Monaco content.
 - Persistent tmux-style shells across reloads.
 - Internet package installation from the terminal.
@@ -132,4 +150,4 @@ Every complete evaluation prints the score, the most frequent actual-to-predicte
 
 ## Definition of done
 
-`Sign in → Sandbox and PTY bridge become ready → Inspect an 8 × 8 digit → Edit Monaco → Run Tests saves solution.py and types pytest into the PTY → Score and visible mistakes appear → Iterate on the model → Files and Sandbox remain available until inactivity or sign-out`
+`Explore the public map without Modal activity → Choose Pixel Pass → Sign in and return to the task → Sandbox and PTY bridge become ready → Inspect an 8 × 8 digit → Edit Monaco → Run Tests saves solution.py and types pytest into the PTY → Score and visible mistakes appear → Iterate on the model → Return to the map or sign out`

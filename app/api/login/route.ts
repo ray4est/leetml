@@ -1,6 +1,7 @@
 import {
   AuthConfigurationError,
   createSessionToken,
+  getSafeReturnPath,
   isSameOrigin,
   SESSION_COOKIE_NAME,
   sessionCookieOptions,
@@ -11,8 +12,11 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function redirectToLogin(request: Request) {
-  return NextResponse.redirect(new URL("/login?error=invalid", request.url), 303);
+function redirectToLogin(request: Request, returnPath = "/") {
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("error", "invalid");
+  if (returnPath !== "/") loginUrl.searchParams.set("next", returnPath);
+  return NextResponse.redirect(loginUrl, 303);
 }
 
 export async function POST(request: Request) {
@@ -26,24 +30,26 @@ export async function POST(request: Request) {
   }
 
   let password: FormDataEntryValue | null;
+  let returnPath = "/";
 
   try {
     const formData = await request.formData();
     password = formData.get("password");
+    returnPath = getSafeReturnPath(formData.get("next"));
   } catch {
     return redirectToLogin(request);
   }
 
   if (typeof password !== "string" || password.length === 0 || password.length > 256) {
-    return redirectToLogin(request);
+    return redirectToLogin(request, returnPath);
   }
 
   try {
     if (!verifyPassword(password)) {
-      return redirectToLogin(request);
+      return redirectToLogin(request, returnPath);
     }
 
-    const response = NextResponse.redirect(new URL("/", request.url), 303);
+    const response = NextResponse.redirect(new URL(returnPath, request.url), 303);
     response.cookies.set(SESSION_COOKIE_NAME, createSessionToken(), sessionCookieOptions());
     response.headers.set("Cache-Control", "no-store");
     return response;

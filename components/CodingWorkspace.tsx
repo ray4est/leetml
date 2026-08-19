@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type {
   TerminalConnectionState,
@@ -126,7 +127,7 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
   return (
     <main className={styles.shell}>
       <header className={styles.header}>
-        <div className={styles.brandGroup}>
+        <Link className={styles.brandGroup} href="/" aria-label="Back to the learning path">
           <div className={styles.mark} aria-hidden="true">
             LM
           </div>
@@ -134,9 +135,13 @@ export function CodingWorkspace({ exercise }: { exercise: Exercise }) {
             <div className={styles.brand}>leetml</div>
             <div className={styles.headerExercise}>{exercise.title}</div>
           </div>
-        </div>
+        </Link>
 
         <div className={styles.actions}>
+          <Link className={styles.mapButton} href="/">
+            <span aria-hidden="true">⌁</span>
+            Map
+          </Link>
           <div
             className={`${styles.status} ${styles[`status_${displayedStatus}`]}`}
             aria-live="polite"

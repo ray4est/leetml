@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     console.error("Failed to terminate the session sandbox during logout", error);
   }
 
-  const response = NextResponse.redirect(new URL("/login", request.url), 303);
+  const response = NextResponse.redirect(new URL("/", request.url), 303);
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     ...sessionCookieOptions(),
     maxAge: 0,
