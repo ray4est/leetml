@@ -1,127 +1,158 @@
+export const MODEL_ARTIFACT_NAME = "model.joblib";
+export const MODEL_METADATA_NAME = "model-meta.json";
+export const TRAIN_MODEL_COMMAND =
+  "rm -f model.joblib model-meta.json && python solution.py && python evaluate_model.py";
+
+const completeCode = `from joblib import dump
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+
+
+# Each image is one row of 64 pixel brightness values.
+digits = load_digits()
+X_train, X_test, y_train, y_test = train_test_split(
+    digits.data,
+    digits.target,
+    test_size=0.25,
+    random_state=42,
+    stratify=digits.target,
+)
+
+# Training stores useful patterns inside the model.
+model = KNeighborsClassifier(n_neighbors=3, weights="distance")
+model.fit(X_train, y_train)
+
+# Save the trained model so the playground can use it later.
+dump(model, "model.joblib")
+print(f"Trained on {len(X_train)} labelled images.")
+`;
+
 export const handwrittenDigitExercise = {
-  id: "handwritten-digit-reader",
-  eyebrow: "Image classification · Beginner",
-  title: "Build a handwritten digit reader",
-  description:
-    "A parcel sorter needs to read handwritten bin numbers from 0 to 9. Train a model on tiny 8 × 8 grayscale images, then predict the digit shown in every new image.",
-  functionSignature: "predict_digits(X_train, y_train, X_test)",
-  requirements: [
-    "Fit a scikit-learn classifier using the supplied 64-pixel training rows.",
-    "Return one prediction for every X_test image.",
-    "Only return integer digit labels from 0 through 9.",
-    "Reach at least 96% accuracy on the fixed test split.",
-  ],
-  tip: "Start with three neighbours. Then compare different n_neighbors values and uniform versus distance weights.",
-  sampleLabel: 0,
-  sampleImage: [
-    0, 0, 5, 13, 9, 1, 0, 0,
-    0, 0, 13, 15, 10, 15, 5, 0,
-    0, 3, 15, 2, 0, 11, 8, 0,
-    0, 4, 12, 0, 0, 8, 8, 0,
-    0, 5, 8, 0, 0, 9, 8, 0,
-    0, 4, 11, 0, 1, 12, 7, 0,
-    0, 2, 14, 5, 10, 12, 0, 0,
-    0, 0, 6, 13, 10, 0, 0, 0,
-  ],
-  starterCode: `from sklearn.neighbors import KNeighborsClassifier
+  id: "handwritten-digit-lab-v2",
+  title: "Train your own digit reader",
+  starterCode: `from joblib import dump
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
 
 
-def predict_digits(X_train, y_train, X_test):
-    """Train a recognizer and predict one digit for each test image."""
-    model = KNeighborsClassifier(n_neighbors=3)
+digits = load_digits()
 
-    # Teach the model using the labelled training images.
-    # Then return its predictions for X_test.
-    raise NotImplementedError
+# TODO 1: Split digits.data and digits.target into training and test sets.
+
+# TODO 2: Create a classifier and teach it with model.fit(...).
+
+# TODO 3: Save the trained model as "model.joblib".
+
+raise NotImplementedError("Finish the three training steps, then run again.")
 `,
-  testSource: `from collections import Counter
+  completeCode,
+  hints: [
+    {
+      title: "Hint 1 · Make practice and quiz piles",
+      body:
+        "Split the labelled images into training data the model may study and test data it must not see while learning. Use the same random_state and stratify values so your score is comparable.",
+      code: `X_train, X_test, y_train, y_test = train_test_split(
+    digits.data,
+    digits.target,
+    test_size=0.25,
+    random_state=42,
+    stratify=digits.target,
+)`,
+    },
+    {
+      title: "Hint 2 · Teach, then save",
+      body:
+        "A classifier starts with an algorithm but no knowledge of these images. fit gives it pixels and answers; dump preserves the learned model for the playground.",
+      code: `model = KNeighborsClassifier(n_neighbors=3, weights="distance")
+model.fit(X_train, y_train)
+dump(model, "model.joblib")`,
+    },
+    {
+      title: "Hint 3 · Complete solution",
+      body:
+        "This is one complete solution. Copy it, run it, then experiment with n_neighbors or a different scikit-learn classifier.",
+      code: completeCode,
+    },
+  ],
+  evaluatorSource: `import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
-import pytest
+from joblib import load
 from sklearn.datasets import load_digits
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
-from solution import predict_digits
+
+MODEL_PATH = Path("model.joblib")
+METADATA_PATH = Path("model-meta.json")
+
+if not MODEL_PATH.is_file():
+    raise SystemExit("Training finished without creating model.joblib. Use joblib.dump to save it.")
+
+digits = load_digits()
+_, X_test, _, y_test = train_test_split(
+    digits.data,
+    digits.target,
+    test_size=0.25,
+    random_state=42,
+    stratify=digits.target,
+)
+
+model = load(MODEL_PATH)
+predictions = np.asarray(model.predict(X_test))
+if predictions.shape != y_test.shape:
+    raise SystemExit(f"Expected {len(y_test)} predictions, received shape {predictions.shape}.")
+if not np.issubdtype(predictions.dtype, np.integer):
+    raise SystemExit("The model must predict integer digits.")
+unexpected = sorted(set(np.unique(predictions)) - set(range(10)))
+if unexpected:
+    raise SystemExit(f"The model predicted values outside 0–9: {unexpected}.")
+
+accuracy = float(accuracy_score(y_test, predictions))
+metadata = {
+    "accuracy": accuracy,
+    "trainedAt": datetime.now(timezone.utc).isoformat(),
+}
+temporary_path = METADATA_PATH.with_suffix(".tmp")
+temporary_path.write_text(json.dumps(metadata), encoding="utf-8")
+os.replace(temporary_path, METADATA_PATH)
+
+print("\\nModel ready for the playground!")
+print(f"Accuracy on 450 unseen images: {accuracy:.1%}")
+print("Choose My model above and try to fool it with your handwriting.")
+`,
+  predictorSource: `import json
+import sys
+from pathlib import Path
+
+import numpy as np
+from joblib import load
 
 
-PIXEL_CHARS = " .:-=+*#%@"
-TARGET_ACCURACY = 0.96
+MODEL_PATH = Path("model.joblib")
+if not MODEL_PATH.is_file():
+    raise SystemExit("model.joblib does not exist")
 
+pixels = json.loads(sys.argv[1])
+values = np.asarray(pixels, dtype=float)
+if values.shape != (64,) or not np.all(np.isfinite(values)):
+    raise SystemExit("expected 64 finite pixel values")
+if np.any(values < 0) or np.any(values > 16):
+    raise SystemExit("pixel values must be between 0 and 16")
 
-def render_digit(flat_image):
-    image = np.asarray(flat_image).reshape(8, 8)
-    levels = np.rint(image / 16 * (len(PIXEL_CHARS) - 1)).astype(int)
-    return "\\n".join("".join(PIXEL_CHARS[level] * 2 for level in row) for row in levels)
+model = load(MODEL_PATH)
+prediction = np.asarray(model.predict(values.reshape(1, -1)))
+if prediction.size != 1:
+    raise SystemExit("model did not return exactly one prediction")
+digit = int(prediction.reshape(-1)[0])
+if digit not in range(10):
+    raise SystemExit("model prediction was not a digit from 0 through 9")
 
-
-def print_feedback(X_test, y_test, predictions, accuracy):
-    print("\\nDigit reader feedback")
-    print(f"Accuracy: {accuracy:.1%}  ·  Target: {TARGET_ACCURACY:.0%}")
-
-    mistakes = np.flatnonzero(predictions != y_test)
-    if mistakes.size == 0:
-        print("Perfect score — no misclassified digits to inspect.")
-        return
-
-    pairs = Counter((int(y_test[index]), int(predictions[index])) for index in mistakes)
-    (actual, predicted), count = pairs.most_common(1)[0]
-    print(f"Most confused pair: actual {actual} → predicted {predicted} ({count} times)")
-    print("\\nThree mistakes to inspect:")
-
-    for index in mistakes[:3]:
-        print(f"\\nActual {int(y_test[index])} → predicted {int(predictions[index])}")
-        print(render_digit(X_test[index]))
-
-
-@pytest.fixture(scope="module")
-def result():
-    digits = load_digits()
-    X_train, X_test, y_train, y_test = train_test_split(
-        digits.data,
-        digits.target,
-        test_size=0.25,
-        random_state=42,
-        stratify=digits.target,
-    )
-    original_inputs = tuple(array.copy() for array in (X_train, X_test, y_train))
-    predictions = np.asarray(predict_digits(X_train, y_train, X_test))
-    inputs_unchanged = all(
-        np.array_equal(current, original)
-        for current, original in zip((X_train, X_test, y_train), original_inputs)
-    )
-    return predictions, X_test, y_test, inputs_unchanged
-
-
-def test_one_prediction_per_image(result):
-    predictions, _, y_test, _ = result
-    assert predictions.shape == y_test.shape, (
-        f"Expected one prediction per image: shape {y_test.shape}. "
-        f"Your result has shape {predictions.shape}."
-    )
-
-
-def test_predictions_are_digits(result):
-    predictions, _, _, _ = result
-    assert np.issubdtype(predictions.dtype, np.integer), (
-        f"Predictions must be integer digits, but the result dtype is {predictions.dtype}."
-    )
-    unexpected = sorted(set(np.unique(predictions)) - set(range(10)))
-    assert not unexpected, f"Predictions contain values outside 0–9: {unexpected}."
-
-
-def test_inputs_are_not_changed(result):
-    _, _, _, inputs_unchanged = result
-    assert inputs_unchanged, "Do not modify X_train, y_train, or X_test in place."
-
-
-def test_minimum_accuracy(result):
-    predictions, X_test, y_test, _ = result
-    accuracy = accuracy_score(y_test, predictions)
-    print_feedback(X_test, y_test, predictions, accuracy)
-    assert accuracy >= TARGET_ACCURACY, (
-        f"Your reader reached {accuracy:.1%}; the target is {TARGET_ACCURACY:.0%}. "
-        "Inspect the mistakes above, then try changing the model or its settings."
-    )
+print(json.dumps({"digit": digit}, separators=(",", ":")))
 `,
 } as const;

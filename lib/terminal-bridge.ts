@@ -22,6 +22,7 @@ EXPECTED_SESSION = os.environ["LEETML_SESSION_ID"]
 COMMAND_TIMEOUT = float(os.environ.get("LEETML_COMMAND_TIMEOUT_SECONDS", "600"))
 IDLE_TIMEOUT = float(os.environ.get("LEETML_IDLE_TIMEOUT_SECONDS", "3600"))
 WORKDIR = "/workspace"
+ACTIVITY_PATH = os.path.join(WORKDIR, ".leetml-activity")
 MAX_INPUT_BYTES = 64 * 1024
 IDLE_MARKER = b"\x1b]1337;leetml-idle\x07"
 
@@ -29,12 +30,24 @@ active_websocket = None
 active_shell = None
 connection_lock = asyncio.Lock()
 last_activity = time.monotonic()
+last_external_activity = 0
 shutdown_event = asyncio.Event()
 
 
 def touch():
     global last_activity
     last_activity = time.monotonic()
+
+
+def observe_external_activity():
+    global last_activity, last_external_activity
+    try:
+        modified = os.stat(ACTIVITY_PATH).st_mtime_ns
+    except OSError:
+        return
+    if modified > last_external_activity:
+        last_external_activity = modified
+        last_activity = time.monotonic()
 
 
 def encode_message(message_type, **values):
@@ -352,6 +365,7 @@ async def terminal_connection(websocket):
 
 async def monitor_inactivity():
     while True:
+        observe_external_activity()
         remaining = IDLE_TIMEOUT - (time.monotonic() - last_activity)
         if remaining <= 0:
             shutdown_event.set()

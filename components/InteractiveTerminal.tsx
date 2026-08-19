@@ -14,6 +14,7 @@ export type TerminalConnectionState =
 export type TerminalController = {
   interruptAndWait: () => Promise<void>;
   sendCommand: (command: string) => Promise<void>;
+  sendCommandAndWait: (command: string) => Promise<void>;
   writeNotice: (message: string) => void;
 };
 
@@ -241,9 +242,18 @@ export function InteractiveTerminal({
       await busy;
     }
 
+    async function sendCommandAndWait(command: string) {
+      if (state !== "ready") throw new Error("The terminal is not ready.");
+      const busy = waitForNextState("busy", 2_000);
+      sendInput(`${command}\r`);
+      await busy;
+      await waitForNextState("ready", 10 * 60 * 1_000 + 30_000);
+    }
+
     const controller: TerminalController = {
       interruptAndWait,
       sendCommand,
+      sendCommandAndWait,
       writeNotice,
     };
     onControllerChange(controller);

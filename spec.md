@@ -1,153 +1,200 @@
-# Technical Specification
+# LeetML v0 Technical Specification
+
+## Product outcome
+
+LeetML v0 is a single-page, interactive handwritten-digit lesson for a gifted 12-year-old. It first makes the limits of hand-written recognition rules concrete, then lets the learner use a ready-made model, train a scikit-learn model, and compare both models on the same visual inputs.
+
+The public experience must not create compute. Only an authenticated, explicit learner action may start a Modal Sandbox.
 
 ## Technical stack
 
-- **Application framework:** Next.js App Router and React
+- **Framework:** Next.js 16 App Router and React 19
 - **Application language:** TypeScript on Node.js 22+
 - **Code editor:** Monaco Editor
-- **Terminal:** xterm.js connected to an interactive PTY over WebSocket
-- **Runtime and execution environment:** Modal Sandboxes and Modal Connect Tokens
-- **Sandbox language and packages:** Python 3.12, NumPy, scikit-learn, pytest, bash, and a pinned Python WebSocket server
-- **Authentication:** Shared passphrase with HMAC-SHA256 signed, HTTP-only sessions
-- **Cryptography:** Node.js built-in `crypto`; no authentication service or database
+- **Terminal:** xterm.js with fit support, connected to an interactive PTY over WebSocket
+- **Execution:** Modal Sandboxes and Modal Connect Tokens
+- **Python runtime:** Python 3.12, NumPy, scikit-learn, joblib, pytest, bash, and a pinned Python WebSocket server
+- **Built-in inference:** Static TypeScript logistic-regression weights and 20 held-out samples exported from scikit-learn's digits dataset
+- **Learner inference:** A joblib artifact loaded and executed only inside the learner's Modal Sandbox
+- **Authentication:** Shared passphrase with HMAC-SHA256-signed HTTP-only sessions
 - **Styling:** CSS Modules and global CSS tokens
-- **State:** Static visual learning-path state, local React workspace state, and session-scoped sandbox files; no database in v0
-
-## Responsibilities
-
-- Monaco Editor is the source of truth for `solution.py`.
-- xterm.js provides shell input, terminal resizing, ANSI rendering, and live PTY output.
-- A small Python WebSocket-to-PTY bridge runs as the sandbox entrypoint and starts bash in `/workspace`.
-- Modal Connect Tokens authenticate the direct browser-to-sandbox WebSocket without depending on WebSocket support from the Next.js host.
-- Modal Sandboxes provide session-scoped files, isolated shell execution, pinned Python packages, and resource limits.
+- **State:** React state, a tab-scoped `sessionStorage` editor draft, static browser-model data, and session-scoped sandbox files; no database
 
 ## v0 scope
 
-The v0 is a public adventure-style learning path leading into one complete coding, shell, and testing loop for a single hard-coded scikit-learn exercise.
-
 ### User flow
 
-1. Explore the public five-quest learning map without starting a Sandbox.
-2. Select the available handwritten-digit quest; the four later quests remain visibly marked **Being built**.
-3. Enter the shared family passphrase and return directly to the selected task.
-4. Open the exercise while the backend provisions a session-specific Modal Sandbox.
-5. The backend writes the public test file, prewarms Python packages, and issues a session-bound Modal Connect Token.
-6. xterm.js connects to a bash PTY in `/workspace`; normal commands, Ctrl+C, ANSI output, and terminal resizing work.
-7. Edit `solution.py` in Monaco Editor.
-8. Click **Run tests**. Any foreground command is interrupted, Monaco is saved to `/workspace/solution.py`, and the browser sends the pytest command through the PTY.
-9. The command, live pytest output, accuracy, most-confused pair, and misclassified digit art appear in the same terminal.
-10. Files remain in the healthy Sandbox for later commands and test runs.
-11. The Sandbox terminates on logout, after one hour without terminal input or output, on infrastructure failure, or at its 24-hour absolute lifetime.
+1. Read the public problem explanation without authenticating or provisioning compute.
+2. Choose one of 20 held-out digit images or draw a digit with mouse, pen, or touch.
+3. Ask the built-in browser model to predict; for held-out images, reveal the true label as immediate feedback.
+4. Inspect and edit the public starter code in an inline Monaco editor.
+5. Reveal up to three progressive hints; the third contains a complete copyable solution.
+6. Choose **Start lab** or **Train my model**. If needed, authenticate and return to `/#do-it-yourself` with the tab draft intact.
+7. Explicitly start or reconnect a session-specific Modal Sandbox and xterm.js shell.
+8. Train: interrupt a busy foreground process, save Monaco as `/workspace/solution.py`, and send `rm -f model.joblib model-meta.json && python solution.py && python evaluate_model.py` through the terminal.
+9. See live Python output and accuracy in xterm.js. A valid model artifact automatically unlocks **My model** and scrolls back to the Playground.
+10. Use the custom model on supplied images or drawings. Each custom prediction executes inside the current sandbox and refreshes its activity timestamp.
+11. Iterate on the learner code, retrain, and compare results.
+12. Lose the custom model when the sandbox terminates on logout, inactivity, infrastructure failure, or its absolute lifetime.
+
+### Page structure
+
+- **Hero:** states the experiment and links to the problem.
+- **Problem:** presents the impossible rule-writing challenge, then accurately introduces supervised learning as fitting numerical state from examples and labels. Python controls the training process; the fitted model is the learned artifact.
+- **Playground:** switches between supplied test images and a drawing canvas, shows the 8 × 8 model input, selects built-in or learner model, and displays feedback.
+- **Do it yourself:** contains Monaco, progressive hints, the explicit compute gate, xterm.js below the editor, training status, errors, and the model-unlocked callout.
+- **Footer:** promises future experiments without presenting a fake progress system or interactive unfinished tasks.
 
 ### Included
 
-- A public, responsive explorer-map landing page at `/` with five static quest nodes.
-- A protected workspace at `/tasks/handwritten-digit-reader` with Monaco Editor and an interactive xterm.js terminal side by side.
-- One available quest and four non-interactive **Being built** roadmap entries.
-- One hard-coded scikit-learn exercise, starter solution, and public pytest file.
-- A Modal image with pinned Python, NumPy, scikit-learn, pytest, and WebSocket dependency versions.
-- One authenticated preparation and terminal-credential endpoint.
-- One authenticated source-save endpoint with a 50 KiB limit and same-origin enforcement.
-- One named, prewarmed Modal Sandbox per authenticated browser session.
-- A direct, Connect Token-authenticated WebSocket to the sandbox PTY bridge.
-- One active shell connection per Sandbox; a newer tab replaces the previous terminal.
-- A fresh bash process after reconnect while files in the Sandbox remain available.
-- A 10-minute foreground-process limit, one-hour inactivity limit, and 24-hour absolute Sandbox lifetime.
-- A shared-passphrase login for exactly two trusted users, with an allowlisted return path to the selected task.
-- A signed 30-day session and a sign-out action.
-- Authentication checks before parsing or performing sandbox operations.
-- Basic preparation, connection, source-save, protocol, timeout, and disconnection reporting.
+- A responsive, accessible lesson at `/`.
+- A browser-local built-in classifier with no runtime API call.
+- Twenty balanced held-out digit samples with answers hidden until prediction.
+- Pointer-based drawing, clear control, crop/pad/centre/downsample processing, and an 8 × 8 preview.
+- A public, editable Monaco Python file and tab-scoped draft preservation.
+- Three progressive hints with copy and insert actions on the complete solution.
+- A protected, explicitly mounted xterm.js shell in a private Modal Sandbox.
+- Automatic save, training command dispatch, accuracy evaluation, and custom-model unlock.
+- Protected status and inference endpoints for a session model.
+- One named, prewarmed sandbox per authenticated session.
+- One-hour inactivity and 24-hour absolute sandbox limits.
+- Shared-passphrase access intended for two trusted family members.
+- A redirect from the legacy task URL to the inline lab anchor.
 
-### Learning path
+## Learning design and model contracts
 
-The public landing page presents a CSS- and SVG-rendered explorer map. Its progress language is intentionally static: **1 trail open · 4 being built**, with an **Explorer rank: Trailhead** badge and reward previews that are not earned or persisted.
+### Dataset
 
-1. **Pixel Pass — Handwritten Digit Reader:** image classification; available at `/tasks/handwritten-digit-reader`.
-2. **Signal Woods — Spam Shield:** text classification; roadmap only.
-3. **Forecast Falls — Bike Demand Forecaster:** regression; roadmap only.
-4. **Neural Ridge — Fashion Sorter:** neural networks; roadmap only.
-5. **Storyforge Summit — Tiny Story Generator:** nanoGPT-style language modeling; roadmap only.
+Both models use scikit-learn's built-in digits dataset. Each grayscale image is represented by 64 values from 0 through 16. A deterministic stratified 75/25 split with `random_state=42` yields 1,347 training images and 450 held-out images.
 
-The active quest is a link with a **Ready to play** status. Future cards are non-interactive content with lock imagery, **Being built**, and **Trail closed** labels. Motion is decorative and disabled when `prefers-reduced-motion` is active.
+### Built-in model
 
-### Exercise
+The browser model is a StandardScaler plus multinomial logistic regression exported as static TypeScript data. Its measured accuracy on the full fixed test set is about 97.8%. Prediction standardizes the 64 values, computes ten linear scores, and selects the highest. It has no server, authentication, Modal, or persistence dependency.
 
-Build a toy parcel-sorter digit reader using scikit-learn's built-in handwritten digits dataset. Each input is an 8 × 8 grayscale image flattened to 64 pixel features. The deterministic stratified split contains 1,347 training images and 450 test images.
+The 20-image gallery contains two examples of each true digit. The model may be wrong; showing both prediction and answer turns errors into useful feedback rather than hiding them.
 
-Implement `predict_digits(X_train, y_train, X_test)`. The starter imports `KNeighborsClassifier`, while any scikit-learn classifier is allowed. Tests verify:
+### Drawing preprocessing
 
-- The output contains exactly one prediction for every test image.
-- Predictions are integer labels from 0 through 9.
-- The function does not mutate the supplied arrays.
-- Predictions reach at least 96% accuracy.
+The canvas records white strokes on black at 280 × 280 pixels. On pointer release, the browser:
 
-Every complete evaluation prints the score, the most frequent actual-to-predicted confusion, and three misclassified 8 × 8 images using terminal-safe grayscale characters. The problem panel also shows a pixel-grid example with its known label.
+1. finds the non-black bounding box;
+2. adds proportional padding;
+3. scales the crop into a centred 6 × 6 region of an 8 × 8 canvas;
+4. downsamples with smoothing; and
+5. maps brightness to integer values from 0 through 16.
+
+An empty canvas produces no model input and keeps prediction disabled. The transformed 8 × 8 image is visible so a poor prediction has an inspectable cause.
+
+### Learner artifact
+
+The starter asks the learner to split the dataset, fit a classifier, and save it with `joblib.dump(..., "model.joblib")`. Any serialized object is accepted if its `predict` method returns exactly 450 integer labels from 0 through 9 for the evaluator's fixed test split.
+
+`evaluate_model.py` validates the artifact, computes accuracy, and atomically writes:
+
+```json
+{
+  "accuracy": 0.9844444444444445,
+  "trainedAt": "2026-08-19T00:00:00+00:00"
+}
+```
+
+There is deliberately no minimum accuracy gate in v0: a weak but structurally valid model unlocks so the learner can see its mistakes and improve it. The complete K-nearest-neighbours solution normally scores about 98.4%.
+
+Custom inference validates exactly 64 finite numbers in the range 0–16 at both the application and Python boundaries. Joblib loading occurs only inside the network-isolated learner sandbox, never in the Next.js process.
+
+## Component responsibilities
+
+- `DigitReaderLesson` owns lesson navigation, editor draft, auth/compute gating, hints, terminal command orchestration, model status, and automatic unlock.
+- `DigitPlayground` owns input mode, sample choice, model choice, prediction state, result, and true-label feedback.
+- `DigitCanvas` owns pointer drawing and conversion to the digits dataset's 8 × 8 value shape.
+- `CodeEditor` wraps Monaco and edits the current `solution.py` buffer.
+- `InteractiveTerminal` owns Connect Token preparation, WebSocket protocol, xterm.js rendering, reconnect, interruption, and command-completion waiting.
+- The Python bridge starts bash in `/workspace`, relays PTY bytes, tracks busy/idle state, resizes, interrupts, limits foreground commands, and enforces inactivity.
+- Modal owns compute isolation, files, packages, limits, and the direct authenticated WebSocket endpoint.
 
 ## Public interfaces
 
 ### `POST /api/prepare`
 
-- Requires a valid application session and returns `401` before contacting Modal otherwise.
-- Creates or retrieves the session Sandbox, initializes `/workspace/test_solution.py`, initializes the starter solution only when absent, imports NumPy and scikit-learn, and waits for the PTY bridge readiness probe.
-- Returns `{ status: "ready", durationMs, terminalUrl, terminalToken }` with `Cache-Control: no-store`.
-- The token is scoped to the bridge port and carries `{ sessionId }` as Modal-verified JSON metadata.
+- Authenticate before contacting Modal; otherwise return `401`.
+- Create or retrieve the named session sandbox only after this explicit request.
+- Refresh `/workspace/evaluate_model.py` and `/workspace/predict_model.py`; create starter `solution.py` only when missing.
+- Pre-import NumPy and scikit-learn and wait for the PTY readiness probe.
+- Return `{ status: "ready", durationMs, terminalUrl, terminalToken }` with `Cache-Control: no-store`.
+- Scope the Connect Token to port 8080 with Modal-verified `{ sessionId }` metadata.
 
 ### `POST /api/solution`
 
-- Requires a valid application session and a same-origin request before parsing the body.
-- Accepts `{ code: string }`, rejects blank or over-50-KiB content, and atomically replaces `/workspace/solution.py` through a temporary file.
-- Returns `{ status: "saved" }`, `409` when the Sandbox expired, and structured errors for validation or infrastructure failures.
+- Authenticate and enforce same origin before parsing the request.
+- Accept `{ code: string }`; reject blank or larger-than-50-KiB content.
+- Atomically replace `/workspace/solution.py`.
+- Return `{ status: "saved" }`, or `409` when no live session sandbox exists.
+
+### `GET /api/model/status`
+
+- Authenticate before contacting Modal; otherwise return `401`.
+- Never create a sandbox.
+- Return `{ status: "missing" }` if the sandbox, artifact, metadata, or valid metadata is absent.
+- Return `{ status: "ready", accuracy, trainedAt }` for a valid current-session artifact.
+- Set `Cache-Control: no-store`.
+
+### `POST /api/model/predict`
+
+- Authenticate and enforce same origin before parsing.
+- Limit the request body to 4 KiB.
+- Accept `{ pixels: number[64] }`, where all values are finite and between 0 and 16.
+- Require both `model.joblib` and `model-meta.json`; otherwise return `409`.
+- Touch `/workspace/.leetml-activity`, execute `predict_model.py` in the sandbox, validate one integer digit, and return `{ digit }` with `Cache-Control: no-store`.
+- Return `400` for invalid pixels and `502` for infrastructure failures.
 
 ### Terminal protocol
 
-- Browser messages are JSON: `input` with base64 bytes, `resize` with bounded rows and columns, or `interrupt`.
-- Bridge messages are JSON: base64 `output`, `state` (`idle` or `busy`), `timeout`, inactivity `shutdown`, or `error`.
-- The bridge accepts only a Modal-verified session identifier matching `LEETML_SESSION_ID`.
-- Run Tests sends `python -m pytest -q -s --disable-warnings --maxfail=1` through the protocol after saving Monaco. Capture is disabled so educational feedback printed by the tests remains visible.
+- Browser messages: base64 `input`, bounded `resize`, or `interrupt`.
+- Bridge messages: base64 `output`, `state` (`idle` or `busy`), `timeout`, inactivity `shutdown`, or `error`.
+- The bridge accepts only Modal-verified metadata whose session identifier matches `LEETML_SESSION_ID`.
+- `sendCommandAndWait` writes a command and resolves only after the bridge reports a return to the shell prompt.
+- A new connection closes the previous shell for the same sandbox.
 
-## Authentication and terminal security
+## Authentication and security
 
-- `APP_ACCESS_PASSWORD` stores a unique shared passphrase of at least 20 characters.
-- `SESSION_SECRET` stores at least 32 random bytes used to sign sessions.
-- The passphrase is submitted only to `POST /api/login`, limited to 256 characters, checked with a timing-safe comparison, and never placed in a cookie.
-- A successful login sets `leetml_session` to `v1.<expiry>.<nonce>.<signature>`, where the signature is HMAC-SHA256 over the preceding fields.
-- Sessions expire after 30 days. The cookie is `HttpOnly`, `SameSite=Strict`, `Path=/`, high priority, and `Secure` in production.
-- The public home page has no authentication or sandbox dependency. The digit-reader task redirects unauthenticated visitors to `/login?next=/tasks/handwritten-digit-reader` before rendering the editor.
-- Login accepts only allowlisted local return paths; all external, malformed, or unknown values fall back to `/`.
-- Missing or weak authentication environment variables fail closed with `503` from authentication-sensitive API routes.
-- The sandbox name is derived from the high-entropy signed session token, so the two users do not share files or shells.
-- The terminal token remains only in component memory, is never logged, and is revoked by Sandbox termination.
-- The bridge is the only process receiving the session identifier; Modal credentials are never injected into the Sandbox.
-- Sandbox outbound CIDR and domain allowlists are both empty, preserving zero egress while allowing authenticated inbound Connect Token traffic. Modal's `blockNetwork` flag is not used because it also blocks the terminal tunnel.
-- Logout attempts to terminate the session Sandbox before clearing the application cookie.
+- `APP_ACCESS_PASSWORD` is a unique shared passphrase of at least 20 characters.
+- `SESSION_SECRET` is at least 32 bytes and signs sessions with HMAC-SHA256.
+- Password comparison is timing-safe; the password is never stored in the cookie.
+- The signed cookie format is `v1.<expiry>.<nonce>.<signature>`, expires after 30 days, and is `HttpOnly`, `SameSite=Strict`, `Path=/`, high-priority, and `Secure` in production.
+- The public page renders even when auth is unconfigured, but its compute gate fails closed and says what is missing.
+- Only `/#do-it-yourself` is an allowlisted login return. Unknown, malformed, or external paths return to `/`.
+- The sandbox name is derived from a high-entropy signed-session token, so the two browsers do not share files or shells.
+- Authentication is checked before body parsing or sandbox operations. Mutating endpoints also require same-origin `Origin` or `Referer` evidence.
+- Modal credentials never enter the sandbox. Connect Tokens remain in browser memory and are not logged.
+- Outbound CIDR and domain allowlists are empty. Inbound terminal traffic still uses Modal's authenticated tunnel.
+- Loading learner-created joblib is intentionally confined to that learner's resource-limited, zero-egress sandbox because joblib artifacts may execute Python during deserialization.
+- Logout attempts sandbox termination before clearing the session cookie.
+
+The passphrase is an access capability, not an account system: the application cannot distinguish the parent from the child or prevent a leaked passphrase from being reused. Rotate both the passphrase and session secret if it is exposed.
 
 ## Sandbox lifecycle
 
-- The Python PTY bridge is the Sandbox entrypoint and exposes only the Connect Token port.
-- An in-sandbox exec readiness probe connects to localhost port 8080 before terminal credentials are returned.
-- Existing Sandboxes without the `terminal-v6` runtime tag or current exercise ID are terminated and replaced, so an exercise change cannot retain stale solution or test files.
-- Concurrent preparation requests in one application process share a promise; the named Modal Sandbox prevents duplicate creation across processes.
-- The canonical public tests are refreshed at preparation, while an existing solution is preserved until Monaco is explicitly saved.
-- A browser reconnect starts a new bash process in the same Sandbox; running jobs and shell history do not survive.
-- A new tab closes the previous terminal connection and its shell to prevent concurrent file and PTY races.
-- Pressing Enter marks the shell busy; a hidden `PROMPT_COMMAND` marker marks it idle when bash returns to the prompt, and the bridge strips that marker before sending output to xterm.js.
-- The bridge signals the PTY foreground process group after 10 busy minutes, sending `SIGINT` and escalating to `SIGKILL` after a short grace period.
-- The bridge records terminal input and output as activity and exits after one inactive hour, even if the WebSocket remains open.
-- Modal also receives `idleTimeoutMs: 3_600_000` as a backup and `timeoutMs: 86_400_000` as the absolute lifetime.
-- Before inactivity shutdown the bridge sends an explicit protocol message, preventing the client from immediately provisioning a replacement. Transient failures still reconnect automatically, while inactivity or replacement by another tab requires **Reconnect terminal**.
-- If a named Sandbox has stopped, the next explicit preparation creates a replacement automatically.
+- Runtime tag: `digit-lab-v1`; exercise tag: `handwritten-digit-lab-v2`. Stale sandboxes with other tags are terminated and replaced.
+- Concurrent prepare calls within one application process share a promise; Modal's named sandbox prevents duplicates across processes.
+- Terminal input/output calls `touch()` in the bridge. Custom inference updates `.leetml-activity`, which the bridge observes as external activity.
+- A permanently open but idle WebSocket does not keep the sandbox alive.
+- The bridge exits after one inactive hour. Modal also receives a one-hour idle timeout as a fallback.
+- Every sandbox has a 24-hour absolute lifetime and every foreground shell command has a 10-minute limit.
+- An inactivity shutdown is terminal until the learner explicitly presses reconnect/start; transient connection failures may reconnect automatically.
+- Reload or reconnect starts a new bash process in the same live sandbox and preserves its files.
+- Logout terminates the named sandbox immediately. A later login session starts with no custom model.
 
 ## Non-goals
 
-- Individual identities, email addresses, roles, account recovery, OAuth, or a database.
-- Saved submissions after Sandbox termination.
-- Implemented exercises beyond the digit reader, hidden tests, a file explorer, or multiple Monaco editor tabs. Future quest cards are visual roadmap entries only.
-- Persisted XP, ranks, quest completion, unlocks, or per-user learning progress.
-- Two-way synchronization from shell file edits back into Monaco; the next Run Tests overwrites `solution.py` with Monaco content.
-- Persistent tmux-style shells across reloads.
+- Individual accounts, exactly-two-account enforcement, email identities, roles, recovery, OAuth, or a database.
+- Persistence for `model.joblib`, code, progress, or scores after sandbox termination.
+- A learning-path map, fake XP/ranks, or interactive unfinished tasks.
+- Multiple exercises, hidden tests, a file explorer, or multiple Monaco tabs.
+- Two-way synchronization from terminal file edits back into Monaco.
+- Persistent tmux-style shells across reconnects.
 - Internet package installation from the terminal.
-- Per-user quotas, collaboration, GPU execution, or production nanoGPT training in v0.
+- Per-user quotas, collaboration, GPUs, or nanoGPT training in v0.
 
 ## Definition of done
 
-`Explore the public map without Modal activity → Choose Pixel Pass → Sign in and return to the task → Sandbox and PTY bridge become ready → Inspect an 8 × 8 digit → Edit Monaco → Run Tests saves solution.py and types pytest into the PTY → Score and visible mistakes appear → Iterate on the model → Return to the map or sign out`
+`Open the lesson without compute → Understand the rule-writing failure → Predict supplied and drawn digits with the browser model → Edit Python and reveal hints → Authenticate only when starting compute → Provision a private sandbox and terminal → Save and train solution.py → Validate model.joblib on unseen images → Automatically unlock My model → Predict with that model → Retrain and compare → Terminate on logout or inactivity`

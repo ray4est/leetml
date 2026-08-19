@@ -22,11 +22,15 @@ const APP_NAME = "leetml-v0";
 const IMAGE_NAME = "leetml-v0-runtime:latest";
 const WORKDIR = "/workspace";
 const SOLUTION_PATH = `${WORKDIR}/solution.py`;
-const TEST_PATH = `${WORKDIR}/test_solution.py`;
+const EVALUATOR_PATH = `${WORKDIR}/evaluate_model.py`;
+const PREDICTOR_PATH = `${WORKDIR}/predict_model.py`;
+const MODEL_PATH = `${WORKDIR}/model.joblib`;
+const MODEL_METADATA_PATH = `${WORKDIR}/model-meta.json`;
+const ACTIVITY_PATH = `${WORKDIR}/.leetml-activity`;
 const PREPARATION_TIMEOUT_MS = 30_000;
 const SANDBOX_IDLE_TIMEOUT_MS = 60 * 60 * 1_000;
 const SANDBOX_MAX_LIFETIME_MS = 24 * 60 * 60 * 1_000;
-const RUNTIME_VERSION = "terminal-v6";
+const RUNTIME_VERSION = "digit-lab-v1";
 
 type ModalResources = {
   app: App;
@@ -45,6 +49,17 @@ export class SessionSandboxUnavailableError extends Error {
     this.name = "SessionSandboxUnavailableError";
   }
 }
+
+export class SessionModelUnavailableError extends Error {
+  constructor(message = "Train a model before choosing My model.") {
+    super(message);
+    this.name = "SessionModelUnavailableError";
+  }
+}
+
+export type SessionModelStatus =
+  | { status: "missing" }
+  | { status: "ready"; accuracy: number; trainedAt: string };
 
 let modalClient: ModalClient | null = null;
 let resourcesPromise: Promise<ModalResources> | null = null;
@@ -193,7 +208,10 @@ async function getOrCreateSessionSandbox(sessionId: string) {
 }
 
 async function initializeWorkspace(sandbox: Sandbox) {
-  await sandbox.filesystem.writeText(handwrittenDigitExercise.testSource, TEST_PATH);
+  await Promise.all([
+    sandbox.filesystem.writeText(handwrittenDigitExercise.evaluatorSource, EVALUATOR_PATH),
+    sandbox.filesystem.writeText(handwrittenDigitExercise.predictorSource, PREDICTOR_PATH),
+  ]);
 
   try {
     await sandbox.filesystem.stat(SOLUTION_PATH);
@@ -201,6 +219,41 @@ async function initializeWorkspace(sandbox: Sandbox) {
     if (!(error instanceof SandboxFilesystemNotFoundError)) throw error;
     await sandbox.filesystem.writeText(handwrittenDigitExercise.starterCode, SOLUTION_PATH);
   }
+}
+
+function parseModelMetadata(source: string): SessionModelStatus {
+  let value: unknown;
+
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw new SessionModelUnavailableError("The saved model metadata is invalid. Train again.");
+  }
+
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("accuracy" in value) ||
+    typeof value.accuracy !== "number" ||
+    !Number.isFinite(value.accuracy) ||
+    value.accuracy < 0 ||
+    value.accuracy > 1 ||
+    !("trainedAt" in value) ||
+    typeof value.trainedAt !== "string" ||
+    !Number.isFinite(Date.parse(value.trainedAt))
+  ) {
+    throw new SessionModelUnavailableError("The saved model metadata is invalid. Train again.");
+  }
+
+  return {
+    status: "ready",
+    accuracy: value.accuracy,
+    trainedAt: value.trainedAt,
+  };
+}
+
+async function touchSessionActivity(sandbox: Sandbox) {
+  await sandbox.filesystem.writeText(String(Date.now()), ACTIVITY_PATH);
 }
 
 async function prepareSessionSandboxOnce(sessionId: string) {
@@ -282,6 +335,87 @@ export async function saveSessionSolution(code: string, sessionId: string) {
     }
   } finally {
     await sandbox.filesystem.remove(temporaryPath).catch(() => undefined);
+    sandbox.detach();
+  }
+}
+
+export async function getSessionModelStatus(sessionId: string): Promise<SessionModelStatus> {
+  const sandbox = await findSessionSandbox(sessionId);
+  if (!sandbox) return { status: "missing" };
+
+  try {
+    const [metadata] = await Promise.all([
+      sandbox.filesystem.readText(MODEL_METADATA_PATH),
+      sandbox.filesystem.stat(MODEL_PATH),
+    ]);
+    return parseModelMetadata(metadata);
+  } catch (error) {
+    if (error instanceof SandboxFilesystemNotFoundError) return { status: "missing" };
+    if (error instanceof SessionModelUnavailableError) return { status: "missing" };
+    throw error;
+  } finally {
+    sandbox.detach();
+  }
+}
+
+export async function predictWithSessionModel(pixels: readonly number[], sessionId: string) {
+  const sandbox = await findSessionSandbox(sessionId);
+  if (!sandbox) throw new SessionSandboxUnavailableError();
+
+  try {
+    await Promise.all([
+      sandbox.filesystem.stat(MODEL_PATH),
+      sandbox.filesystem.stat(MODEL_METADATA_PATH),
+    ]).catch((error: unknown) => {
+      if (error instanceof SandboxFilesystemNotFoundError) {
+        throw new SessionModelUnavailableError();
+      }
+      throw error;
+    });
+
+    await touchSessionActivity(sandbox);
+    const process = await sandbox.exec(
+      ["python", PREDICTOR_PATH, JSON.stringify(pixels)],
+      {
+        mode: "text",
+        timeoutMs: PREPARATION_TIMEOUT_MS,
+        workdir: WORKDIR,
+      },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      process.stdout.readText(),
+      process.stderr.readText(),
+      process.wait(),
+    ]);
+
+    if (exitCode !== 0) {
+      console.error("Sandbox model prediction failed", stderr);
+      throw new SessionModelUnavailableError(
+        "The saved model could not make a prediction. Train it again.",
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(stdout);
+    } catch {
+      throw new SessionModelUnavailableError("The saved model returned an invalid prediction.");
+    }
+
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      !("digit" in payload) ||
+      typeof payload.digit !== "number" ||
+      !Number.isInteger(payload.digit) ||
+      payload.digit < 0 ||
+      payload.digit > 9
+    ) {
+      throw new SessionModelUnavailableError("The saved model returned an invalid prediction.");
+    }
+
+    return payload.digit;
+  } finally {
     sandbox.detach();
   }
 }

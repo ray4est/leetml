@@ -39,10 +39,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <div className={styles.mark} aria-hidden="true">
           LM
         </div>
-        <p className={styles.eyebrow}>Explorer checkpoint</p>
-        <h1 id="login-title">Enter the expedition</h1>
+        <p className={styles.eyebrow}>Protected model lab</p>
+        <h1 id="login-title">Start your Python lab</h1>
         <p className={styles.description}>
-          Enter the shared family passphrase to continue from the map into a live coding quest.
+          Enter the shared family passphrase to start the terminal, train models, and use them in
+          the playground.
         </p>
 
         {!isConfigured ? (
@@ -76,13 +77,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             disabled={!isConfigured}
           />
           <button type="submit" disabled={!isConfigured}>
-            Begin adventure
+            Unlock the lab
           </button>
         </form>
 
         <p className={styles.help}>
-          The learning map is public. Live coding is limited to the two explorers who know this
-          passphrase.
+          The lesson and built-in model are public. Modal execution is limited to the two people
+          who know this passphrase.
         </p>
       </section>
     </main>

@@ -1,6 +1,6 @@
 # LeetML
 
-LeetML v0 is an adventure-style machine-learning learning path with one playable coding quest, browser-based editing, and isolated test execution.
+LeetML v0 is one interactive handwritten-digit lesson. A learner can explore a ready-made model, draw digits, edit Python in Monaco, train a scikit-learn model in a private Modal Sandbox, and use that model in the same playground.
 
 ## Prerequisites
 
@@ -10,17 +10,14 @@ LeetML v0 is an adventure-style machine-learning learning path with one playable
 
 ## Setup
 
-Install the application dependencies:
+Install dependencies and create the local environment file:
 
 ```bash
 npm install
-```
-
-Create the local environment file:
-
-```bash
 cp .env.example .env.local
 ```
+
+Configure all four values:
 
 ```dotenv
 APP_ACCESS_PASSWORD=a-unique-passphrase-at-least-20-characters-long
@@ -29,73 +26,83 @@ MODAL_TOKEN_ID=your-token-id
 MODAL_TOKEN_SECRET=your-token-secret
 ```
 
-Use a password manager to generate and share `APP_ACCESS_PASSWORD` with the two trusted users. Generate `SESSION_SECRET` separately; for example:
+Generate `SESSION_SECRET` separately from the family passphrase, for example with `openssl rand -base64 32`. Share only `APP_ACCESS_PASSWORD` with the two trusted learners. Do not commit `.env.local`; add the same four values to the production host as secrets.
 
-```bash
-openssl rand -base64 32
-```
-
-Do not share `SESSION_SECRET`, and do not commit `.env.local` or any of its values. Add all four variables to the production host as deployment secrets.
-
-Build and publish the pinned Python runtime before the first execution:
+Build and publish the pinned Python runtime before the first lab session:
 
 ```bash
 npm run modal:prepare
 ```
 
-Start the application:
+Start the application and open [http://localhost:3000](http://localhost:3000):
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the public expedition map. Select **Start first quest**, sign in, and wait for the terminal prompt. You can then run normal shell commands, edit `solution.py` in Monaco, and select **Run tests** to save it and send pytest through the terminal.
+## Lesson behavior
 
-## Authentication
+The single page has three sections:
 
-The learning path at `/` is public and never prepares a Modal Sandbox. The workspace at `/tasks/handwritten-digit-reader` and every execution API require the shared passphrase. A successful login creates a signed, HTTP-only session cookie that lasts for 30 days. The cookie uses `SameSite=Strict`, and production deployments also mark it `Secure`.
+1. **Problem** challenges the learner to imagine handwritten rules for recognizing every possible digit, then introduces supervised learning as training a numerical model from images and their labels.
+2. **Playground** offers 20 held-out digit images and a pointer drawing canvas. The built-in logistic-regression model runs entirely in the browser, so it is public and does not spend Modal budget. A prediction on a supplied image also reveals its true label.
+3. **Do it yourself** provides an editable Monaco editor, three progressive hints, and a terminal below it. The final hint can be copied or inserted as a complete solution.
 
-When a protected task sends a learner to login, an allowlisted `next` value returns them directly to that task. Unknown, malformed, or external destinations fall back to `/` to prevent open redirects.
+Selecting **Start lab** or **Train my model** is the first action that can provision Modal. Training saves Monaco to `/workspace/solution.py` and sends this command through xterm.js:
 
-There are no individual accounts in v0. Changing `APP_ACCESS_PASSWORD` does not immediately revoke existing sessions; changing `SESSION_SECRET` invalidates every session and requires both users to sign in again.
+```bash
+rm -f model.joblib model-meta.json && python solution.py && python evaluate_model.py
+```
 
-## Runtime behavior
+`solution.py` must save an object with a usable `predict` method as `model.joblib`. The evaluator tests it on the deterministic 450-image test split, validates its output, writes `model-meta.json`, and prints its accuracy. A valid artifact immediately unlocks **My model** in the playground. The supplied K-nearest-neighbours solution scores about 98.4%.
 
-When the authenticated digit-reader workspace opens, `POST /api/prepare` creates or retrieves a sandbox dedicated to that login session, warms Python, NumPy, and scikit-learn, and returns a Modal Connect Token for the sandbox terminal bridge. Merely viewing the public map does not mount the terminal or call this endpoint. xterm.js connects directly to a bash PTY in `/workspace`.
+The terminal remains a normal bash shell in `/workspace`. Monaco is the source of truth for `solution.py`: pressing **Train my model** overwrites that file with the current editor buffer. Shell edits do not flow back into Monaco.
 
-Run Tests first interrupts any foreground process, saves Monaco through `POST /api/solution`, and sends `python -m pytest -q -s --disable-warnings --maxfail=1` into that PTY. Terminal edits do not flow back to Monaco; the next Run Tests overwrites `solution.py` with the Monaco buffer.
+## Authentication and budget protection
 
-The first exercise is a handwritten digit reader using scikit-learn's built-in 8 × 8 digits dataset. A fixed split supplies 1,347 labelled training images and 450 test images. Tests print the current accuracy, the most-confused digit pair, and three mistakes as grayscale terminal art so each run gives concrete feedback.
+The explanation, built-in playground, drawing canvas, editor, and hints are public. Terminal access, source saving, training, model status, and custom-model predictions require the shared family passphrase.
 
-The bridge exits after one hour without terminal input or output, including when an idle browser leaves its WebSocket open. The sandbox also has Modal's one-hour idle fallback and a 24-hour absolute lifetime. Logout terminates it immediately. Reconnecting starts a fresh bash process while the current Sandbox and its files still exist.
+A successful login creates a signed HTTP-only cookie lasting 30 days. It uses `SameSite=Strict` and is also `Secure` in production. The shared-passphrase design does not create individual identities or enforce a literal two-account limit; budget protection depends on keeping the passphrase private.
 
-Each sandbox has:
+Only `/#do-it-yourself` is accepted as a post-login return target. External or malformed destinations fall back to `/`. Changing `APP_ACCESS_PASSWORD` does not revoke cookies already issued; changing `SESSION_SECRET` invalidates all sessions.
 
-- Python 3.12 with pinned NumPy, scikit-learn, and pytest versions
-- One CPU with a hard one-CPU limit
-- 1 GiB reserved memory and a 2 GiB hard limit
-- A 10-minute limit for each foreground process group
-- A one-hour inactivity timeout and 24-hour absolute sandbox lifetime
-- Network access disabled
+## Runtime and lifecycle
 
-Only one terminal connection is active per Sandbox. Opening it in a newer tab replaces the prior shell. The terminal connection uses a bearer token returned only after application authentication; do not log or share terminal WebSocket URLs.
+Each authenticated browser session receives a named Modal Sandbox with:
+
+- Python 3.12, NumPy, scikit-learn, joblib, pytest, bash, and the WebSocket bridge
+- One CPU, 1 GiB reserved memory, and a 2 GiB hard limit
+- No outbound network access
+- A 10-minute foreground-command limit
+- One-hour inactivity termination and a 24-hour absolute lifetime
+
+Terminal input/output and custom-model predictions count as activity. Merely reading the page or using the built-in browser model does not. The sandbox and `model.joblib` disappear after one inactive hour, infrastructure failure, the absolute limit, or logout. Reconnecting during its lifetime starts a fresh bash process but preserves its files.
+
+Only one terminal connection is active per sandbox. A newer tab replaces the previous shell. The browser connects directly using a short-lived Modal Connect Token held only in component memory.
 
 ## Manual acceptance test
 
-1. Open `/` while signed out and confirm the full learning map renders without a request to `/api/prepare`.
-2. Confirm the digit reader is the only actionable quest and the other four quests say **Being built**.
-3. Select **Start first quest**, sign in, and confirm you arrive at `/tasks/handwritten-digit-reader` rather than returning to the map.
-4. Confirm the workspace brand and **Map** control return to `/`, then reopen the quest and wait for a colored `ray@leetml` prompt.
-5. Run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
-6. Run `python -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)"` and confirm outbound networking is blocked.
-7. Leave the starter solution unchanged, select **Run tests**, and observe the pytest command and `NotImplementedError` live in the terminal.
-8. Implement `predict_digits` by fitting the model and returning its predictions.
-9. Rerun and confirm all four tests pass, the score reaches 96%, and three misclassified digits appear as terminal art.
-10. Change `n_neighbors` or `weights`, rerun, and compare the score and visible mistakes.
-11. Run `sleep 60`, then select **Run tests** and confirm the sleep command is interrupted before pytest starts.
-12. Reload the page and confirm a fresh prompt opens and `/workspace/solution.py` still exists.
-13. Open a second tab and confirm it takes over the terminal; use **Reconnect terminal** in the first tab to take it back.
-14. Sign out and confirm you return to the public map and that a later sign-in provisions a new Sandbox.
+1. Open `/` signed out. Confirm the Problem, Playground, and Do it yourself sections render, and confirm the Network panel shows no request to `/api/prepare`.
+2. Pick several test images with the **LeetML model**, press **Predict digit**, and confirm each result reveals both the prediction and hidden answer.
+3. Open **Draw your own**, draw a large digit, and confirm the 8 × 8 machine view appears before predicting. Clear it and confirm prediction is disabled.
+4. Edit `solution.py`, reveal all three hints, and use **Use in editor**. Reload before signing in and confirm the draft remains in this tab.
+5. Press **Start lab** or **Train my model**, enter the family passphrase, and confirm you return to `/#do-it-yourself` without losing the draft.
+6. Press **Start lab** if needed. Wait for the colored `ray@leetml` prompt, then run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
+7. Restore the starter code and press **Train my model**. Confirm the terminal shows the `NotImplementedError` and the playground remains on the built-in model.
+8. Insert the complete hint and train again. Confirm the terminal reports an accuracy near 98.4%, **My model is ready** appears, and the page returns to the Playground with **My model** selected.
+9. Predict a supplied image and a drawing with **My model**. Confirm both predictions return and supplied images still reveal their true labels.
+10. Change `n_neighbors`, retrain, and confirm the displayed accuracy and model timestamp update.
+11. Use the terminal as a shell. Run `sleep 60`, press **Train my model**, and confirm it interrupts the foreground command before training.
+12. Reload, press **Start lab**, and confirm the existing model is still available while the sandbox is alive.
+13. Open a second tab and confirm it takes over the terminal. Reconnect from the first tab to take it back.
+14. Visit `/tasks/handwritten-digit-reader` and confirm it redirects to `/#do-it-yourself`.
+15. Sign out, confirm the lab locks, and confirm the prior custom model is gone after signing in and starting a new sandbox.
+
+To verify network isolation, run this in the sandbox and confirm it fails:
+
+```bash
+python -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)"
+```
 
 ## Development checks
 
@@ -104,4 +111,4 @@ npm run lint
 npm run build
 ```
 
-The real Modal integration requires valid values in `.env.local`; a mocked execution does not satisfy the v0 definition of done.
+The v0 definition of done includes one real Modal pass through login, preparation, training, model status, prediction, and logout; mocked execution alone is insufficient.

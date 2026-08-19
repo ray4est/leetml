@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { DIGIT_READER_PATH } from "./learning-path";
+import { DIGIT_LAB_ANCHOR } from "./routes";
 import { cookies } from "next/headers";
 
 export const SESSION_COOKIE_NAME = "leetml_session";
@@ -8,7 +8,7 @@ export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const SESSION_VERSION = "v1";
 const MIN_PASSWORD_LENGTH = 20;
 const MIN_SECRET_BYTES = 32;
-const SAFE_RETURN_PATHS = new Set<string>([DIGIT_READER_PATH]);
+const SAFE_RETURN_PATHS = new Set<string>([DIGIT_LAB_ANCHOR]);
 
 type AuthConfig = {
   password: string;
