@@ -28,9 +28,9 @@ const MODEL_PATH = `${WORKDIR}/model.joblib`;
 const MODEL_METADATA_PATH = `${WORKDIR}/model-meta.json`;
 const ACTIVITY_PATH = `${WORKDIR}/.leetml-activity`;
 const PREPARATION_TIMEOUT_MS = 30_000;
-const SANDBOX_IDLE_TIMEOUT_MS = 60 * 60 * 1_000;
+const SANDBOX_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1_000;
 const SANDBOX_MAX_LIFETIME_MS = 24 * 60 * 60 * 1_000;
-const RUNTIME_VERSION = "digit-lab-v1";
+const RUNTIME_VERSION = "digit-lab-v2";
 
 type ModalResources = {
   app: App;
@@ -113,11 +113,22 @@ function sandboxName(sessionId: string) {
   return `leetml-${sessionId}`;
 }
 
+function isCompletedSandboxError(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "message" in error &&
+      typeof error.message === "string" &&
+      error.message.includes("has already completed"),
+  );
+}
+
 async function findSessionSandbox(sessionId: string) {
   const modal = getModalClient();
+  let sandbox: Sandbox | null = null;
 
   try {
-    const sandbox = await modal.sandboxes.fromName(APP_NAME, sandboxName(sessionId));
+    sandbox = await modal.sandboxes.fromName(APP_NAME, sandboxName(sessionId));
 
     if ((await sandbox.poll()) !== null) {
       sandbox.detach();
@@ -135,7 +146,10 @@ async function findSessionSandbox(sessionId: string) {
 
     return sandbox;
   } catch (error) {
-    if (error instanceof NotFoundError) return null;
+    if (error instanceof NotFoundError || isCompletedSandboxError(error)) {
+      sandbox?.detach();
+      return null;
+    }
     throw error;
   }
 }
@@ -361,6 +375,7 @@ export async function getSessionModelStatus(sessionId: string): Promise<SessionM
   } catch (error) {
     if (error instanceof SandboxFilesystemNotFoundError) return { status: "missing" };
     if (error instanceof SessionModelUnavailableError) return { status: "missing" };
+    if (isCompletedSandboxError(error)) return { status: "missing" };
     throw error;
   } finally {
     sandbox.detach();

@@ -10,6 +10,7 @@ import {
   type NearestDigit,
 } from "@/lib/browser-digit-model";
 import { DigitCanvas } from "./DigitCanvas";
+import { DigitPixelGrid } from "./DigitPixelGrid";
 import styles from "./DigitReaderLesson.module.css";
 
 export type PlaygroundModel = "builtin" | "custom";
@@ -33,24 +34,6 @@ type PredictionResult = {
   neighbors?: readonly NearestDigit[];
   source: "sample" | "drawing";
 };
-
-function PixelGrid({ pixels, label }: { pixels: readonly number[]; label: string }) {
-  return (
-    <div
-      className={styles.pixelGrid}
-      role={label ? "img" : undefined}
-      aria-label={label || undefined}
-      aria-hidden={label ? undefined : true}
-    >
-      {pixels.map((brightness, index) => (
-        <span
-          key={index}
-          style={{ backgroundColor: `rgba(248, 250, 245, ${brightness / 16})` }}
-        />
-      ))}
-    </div>
-  );
-}
 
 export function DigitPlayground({
   authenticated,
@@ -160,7 +143,7 @@ export function DigitPlayground({
               }}
             >
               <option value="builtin">
-                LeetML KNN · {(browserModelAccuracy * 100).toFixed(1)}%
+                Built-in KNN · {(browserModelAccuracy * 100).toFixed(1)}%
               </option>
               <option value="custom" disabled={customModelStatus.state !== "ready"}>
                 {customModelLabel}
@@ -172,7 +155,7 @@ export function DigitPlayground({
         {mode === "samples" ? (
           <div className={styles.samplesPanel} role="tabpanel">
             <div className={styles.sampleStage}>
-              <PixelGrid
+              <DigitPixelGrid
                 pixels={selectedSample.pixels}
                 label="Selected handwritten digit test image with its answer hidden"
               />
@@ -195,7 +178,7 @@ export function DigitPlayground({
                     resetPrediction();
                   }}
                 >
-                  <PixelGrid pixels={sample.pixels} label="" />
+                  <DigitPixelGrid pixels={sample.pixels} />
                   <span>{String(index + 1).padStart(2, "0")}</span>
                 </button>
               ))}
@@ -213,7 +196,7 @@ export function DigitPlayground({
             <div className={styles.machineView}>
               <span>Exact model input</span>
               {drawingPixels ? (
-                <PixelGrid pixels={drawingPixels} label="Your exact eight by eight pixel drawing" />
+                <DigitPixelGrid pixels={drawingPixels} label="Your exact eight by eight pixel drawing" />
               ) : (
                 <div className={styles.emptyPixelGrid}>8 × 8</div>
               )}
@@ -225,7 +208,7 @@ export function DigitPlayground({
         <div className={styles.predictionBar}>
           <div className={styles.modelState}>
             <span className={model === "custom" ? styles.customDot : styles.builtinDot} />
-            {model === "custom" ? "Using your sandbox model" : "Running free in this browser"}
+            {model === "custom" ? "Using your trained model" : "Using the built-in model here"}
           </div>
           <button
             className={styles.predictButton}
@@ -267,7 +250,7 @@ export function DigitPlayground({
                     {result.neighbors.map((neighbor, index) => (
                       <article key={`${index}-${neighbor.label}-${neighbor.distance}`}>
                         <span>Neighbour {index + 1}</span>
-                        <PixelGrid
+                        <DigitPixelGrid
                           pixels={neighbor.pixels}
                           label={`Nearest study digit ${index + 1}, labelled ${neighbor.label}`}
                         />

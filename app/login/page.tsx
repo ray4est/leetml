@@ -37,13 +37,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     <main className={styles.page}>
       <section className={styles.card} aria-labelledby="login-title">
         <div className={styles.mark} aria-hidden="true">
-          LM
+          HR
         </div>
-        <p className={styles.eyebrow}>Protected model lab</p>
-        <h1 id="login-title">Start your Python lab</h1>
+        <p className={styles.eyebrow}>Private learning lab</p>
+        <h1 id="login-title">Handwriting Reader Lab</h1>
         <p className={styles.description}>
-          Enter the shared family passphrase to start the terminal, train models, and use them in
-          the playground.
+          Enter the shared family passphrase to open the lesson, playground, Python editor, and
+          training terminal.
         </p>
 
         {!isConfigured ? (
@@ -82,8 +82,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </form>
 
         <p className={styles.help}>
-          The lesson and built-in model are public. Modal execution is limited to the two people
-          who know this passphrase.
+          The whole lab is limited to the two people who know this passphrase. Opening it does not
+          start Modal compute; only an explicit Start or Train action does.
         </p>
       </section>
     </main>

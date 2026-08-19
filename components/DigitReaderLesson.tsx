@@ -15,6 +15,7 @@ import type {
   TerminalConnectionState,
   TerminalController,
 } from "./InteractiveTerminal";
+import { DataExplorer } from "./DataExplorer";
 import styles from "./DigitReaderLesson.module.css";
 
 const CodeEditor = dynamic(
@@ -40,6 +41,7 @@ type ModelStatusResponse =
   | { error: string };
 
 type SaveResponse = { status: "saved" } | { error: string };
+type ResetResponse = { status: "reset" } | { error: string };
 type PredictResponse = DigitPrediction | { error: string };
 
 function PanelLoading({ label }: { label: string }) {
@@ -65,6 +67,15 @@ function isSaveResponse(value: unknown): value is SaveResponse {
     value &&
       typeof value === "object" &&
       (("status" in value && value.status === "saved") ||
+        ("error" in value && typeof value.error === "string")),
+  );
+}
+
+function isResetResponse(value: unknown): value is ResetResponse {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      (("status" in value && value.status === "reset") ||
         ("error" in value && typeof value.error === "string")),
   );
 }
@@ -128,7 +139,9 @@ export function DigitReaderLesson({
   const [pendingTraining, setPendingTraining] = useState(false);
   const [training, setTraining] = useState(false);
   const [trainingError, setTrainingError] = useState<string | null>(null);
-  const [revealedHints, setRevealedHints] = useState(0);
+  const [resetting, setResetting] = useState(false);
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const [activeHintIndex, setActiveHintIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const terminalController = useRef<TerminalController | null>(null);
 
@@ -259,6 +272,56 @@ export function DigitReaderLesson({
     terminalController.current = controller;
   }, []);
 
+  function restoreInitialWorkspace() {
+    terminalController.current = null;
+    window.sessionStorage.removeItem(DRAFT_KEY);
+    setCode(handwrittenDigitExercise.starterCode);
+    setModel("builtin");
+    setModelStatus({ state: "missing" });
+    setLabStarted(false);
+    setTerminalState("connecting");
+    setPendingTraining(false);
+    setTraining(false);
+    setTrainingError(null);
+    setActiveHintIndex(0);
+    setCopied(false);
+    setWorkspaceVersion((version) => version + 1);
+  }
+
+  async function resetWorkspace() {
+    const confirmed = window.confirm(
+      "Reset this lab? This permanently deletes your current code, trained model, and private sandbox, then restores the starter code.",
+    );
+    if (!confirmed) return;
+
+    if (!authenticated) {
+      restoreInitialWorkspace();
+      return;
+    }
+
+    setResetting(true);
+    setTrainingError(null);
+    try {
+      const response = await fetch("/api/reset", { method: "POST" });
+      if (response.status === 401) {
+        restoreInitialWorkspace();
+        window.location.assign(DIGIT_LAB_LOGIN_PATH);
+        return;
+      }
+
+      const payload: unknown = await response.json();
+      if (!isResetResponse(payload)) throw new Error("Reset returned invalid data.");
+      if (!response.ok || "error" in payload) {
+        throw new Error("error" in payload ? payload.error : "The lab could not be reset.");
+      }
+      restoreInitialWorkspace();
+    } catch (error) {
+      setTrainingError(error instanceof Error ? error.message : "The lab could not be reset.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
   function requestLab(startTraining: boolean) {
     window.sessionStorage.setItem(DRAFT_KEY, code);
     if (!authenticated) {
@@ -300,9 +363,9 @@ export function DigitReaderLesson({
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <Link className={styles.brand} href="/" aria-label="LeetML digit reader lesson">
-          <span className={styles.brandMark}>LM</span>
-          <span>leetml</span>
+        <Link className={styles.brand} href="/" aria-label="Handwriting Reader Lab home">
+          <span className={styles.brandMark}>HR</span>
+          <span>Handwriting Reader Lab</span>
         </Link>
         <nav aria-label="Lesson sections">
           <a href="#problem">Problem</a>
@@ -320,12 +383,21 @@ export function DigitReaderLesson({
 
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
-          <p className={styles.heroEyebrow}>Machine learning field lab · 01</p>
+          <p className={styles.heroEyebrow}>Learning from examples · Lab 01</p>
           <h1>Can a machine learn to read your handwriting?</h1>
           <p>
-            First try to solve an impossible-looking Python problem. Then train a model, inspect
-            what it learned, and challenge it with digits nobody coded by hand.
+            First try ordinary programming: write the recognition rules yourself. Then discover
+            machine learning—a way for a computer to build those rules from examples and correct
+            answers.
           </p>
+          <div className={styles.labGoal}>
+            <span>Your goal</span>
+            <p>
+              Work through the lab, understand the ideas, and train your own model. Test it with
+              the supplied sample images and your own handwriting. Find at least one handwritten
+              digit it recognizes correctly—and at least one it gets wrong.
+            </p>
+          </div>
           <a className={styles.heroAction} href="#problem">
             Begin the experiment <span aria-hidden="true">↓</span>
           </a>
@@ -334,7 +406,7 @@ export function DigitReaderLesson({
           {[digitGallery[5], digitGallery[8], digitGallery[15]].map((sample, index) => (
             <div className={styles.floatingDigit} key={sample.id}>
               <MiniDigit pixels={sample.pixels} />
-              <span>{index === 0 ? "pixels" : index === 1 ? "patterns" : "prediction"}</span>
+              <span>{index === 0 ? "pixels" : index === 1 ? "examples" : "answer"}</span>
             </div>
           ))}
           <svg viewBox="0 0 520 360">
@@ -377,22 +449,40 @@ export function DigitReaderLesson({
           </div>
         </div>
 
-        <div className={styles.learningReveal}>
-          <div>
-            <p className={styles.eyebrow}>Change the question</p>
-            <h3>Do not describe every rule. Remember similar examples.</h3>
+        <div className={styles.programmingComparison}>
+          <div className={styles.comparisonIntro}>
+            <p className={styles.eyebrow}>Programming compared with machine learning</p>
+            <h3>Who writes the rules?</h3>
             <p>
-              K-nearest neighbours remembers thousands of images alongside their correct answers.
-              For a new image, it finds the three study images with the smallest pixel differences.
-              Their labels vote, with closer matches getting a stronger vote.
+              <strong>Machine learning (ML)</strong> is a way to create a program by giving a
+              computer examples and correct answers, instead of asking a person to write every rule.
             </p>
           </div>
-          <div className={styles.learningFlow} aria-label="Three-nearest-neighbours prediction flow">
-            <div><span>1</span><strong>New image</strong><small>64 pixels</small></div>
-            <b aria-hidden="true">→</b>
-            <div><span>2</span><strong>3 closest</strong><small>study images</small></div>
-            <b aria-hidden="true">→</b>
-            <div className={styles.flowModel}><span>3</span><strong>Vote</strong><small>predict a label</small></div>
+          <div className={styles.comparisonCards}>
+            <article>
+              <span>Ordinary programming</span>
+              <h4>A person writes the rules.</h4>
+              <p>
+                You describe exactly how to turn the information coming in into an answer. The
+                computer follows those instructions without learning from past examples.
+              </p>
+              <div className={styles.comparisonFlow}>
+                <code>your rules</code><b>+</b><code>new image</code><b>→</b><code>answer</code>
+              </div>
+            </article>
+            <article className={styles.mlComparisonCard}>
+              <span>Machine learning</span>
+              <h4>The computer builds rules from examples.</h4>
+              <p>
+                A <strong>learning algorithm</strong> is a recipe for finding useful patterns.
+                <strong> Training</strong> means running that recipe on examples and their correct
+                answers. The saved result is a <strong>model</strong>. A model&apos;s answer for a new
+                example is called a <strong>prediction</strong>.
+              </p>
+              <div className={styles.comparisonFlow}>
+                <code>examples + answers</code><b>→</b><code>training</code><b>→</b><code>model</code>
+              </div>
+            </article>
           </div>
         </div>
 
@@ -401,9 +491,13 @@ export function DigitReaderLesson({
             <p className={styles.eyebrow}>The data · decoded</p>
             <h3 id="data-lesson-title">Think of it as studying for a test.</h3>
             <p>
-              In machine learning, <code>X</code> holds the questions and <code>y</code> holds their
-              answers. Here, every question is an 8 × 8 digit image and its answer is one label from
-              0 to 9. We split both into a study pile and a test pile.
+              <strong>Data</strong> is the collection of examples a computer can study or answer.
+              A <strong>feature</strong> is one measured detail about an example; here, each of the
+              64 grayscale pixel values is one feature. <strong>Ground truth</strong> is the trusted
+              correct answer supplied by a human teacher. In <strong>Python</strong>, the programming
+              language used in this lab, <code>X</code> holds the image features and <code>y</code>
+              holds their ground-truth answers. Each stored answer is also called a
+              <strong> label</strong>.
             </p>
           </div>
 
@@ -433,8 +527,8 @@ export function DigitReaderLesson({
                 <code>y_train</code>
               </div>
               <p>
-                The model receives 1,347 image-questions <em>and</em> their correct answers. KNN
-                studies by remembering these pairs so it can find similar questions later.
+                During training, the learning algorithm receives 1,347 image-questions <em>and</em>
+                their correct answers. It may use both piles to learn which features are useful.
               </p>
             </article>
 
@@ -457,13 +551,37 @@ export function DigitReaderLesson({
           </div>
 
           <p className={styles.namingNote}>
-            Why lowercase <code>y</code>? It is the usual scikit-learn spelling: capital <code>X</code>
-            is a table of many features; lowercase <code>y</code> is one answer for each row.
+            Why lowercase <code>y</code>? It is the usual spelling in <strong>scikit-learn</strong>,
+            the Python toolkit we use for machine learning: capital <code>X</code> is a table of many
+            features; lowercase <code>y</code> is one answer for each row.
           </p>
+
+          <DataExplorer />
+        </div>
+
+        <div className={styles.learningReveal}>
+          <div>
+            <p className={styles.eyebrow}>Meet the learning algorithm</p>
+            <h3>Find examples that look most similar.</h3>
+            <p>
+              <strong>K-nearest neighbours (KNN)</strong> is a learning algorithm that remembers the
+              study data. The letter <strong>k</strong> means how many nearby examples may vote. We
+              use k = 3. For a new image, KNN calculates a <strong>distance</strong>—one number that
+              measures pixel difference—to every study image. Smaller distance means more similar.
+            </p>
+          </div>
+          <div className={styles.learningFlow} aria-label="Three-nearest-neighbours prediction flow">
+            <div><span>1</span><strong>New image</strong><small>64 features</small></div>
+            <b aria-hidden="true">→</b>
+            <div><span>2</span><strong>3 closest</strong><small>smallest distances</small></div>
+            <b aria-hidden="true">→</b>
+            <div className={styles.flowModel}><span>3</span><strong>Vote</strong><small>predict a label</small></div>
+          </div>
         </div>
       </section>
 
       <DigitPlayground
+        key={workspaceVersion}
         authenticated={authenticated}
         customModelStatus={modelStatus}
         model={model}
@@ -477,10 +595,34 @@ export function DigitReaderLesson({
           <p className={styles.eyebrow}>Do it yourself</p>
           <h2 id="lab-title">Train the model behind the menu.</h2>
           <p>
-            Complete the three missing steps, run the file, and create a real model artifact. If you
-            get stuck, reveal one hint at a time—the final hint contains a complete working solution.
+            A <strong>classifier</strong> is a model that chooses a category—here, one digit from 0
+            to 9. Complete the three steps below to build one. When you start, the lab opens a
+            <strong> sandbox</strong>, a temporary private computer, and a <strong>terminal</strong>,
+            a text window for running Python commands.
+          </p>
+          <p>
+            In the starter code, <code>digits.data</code> contains the image features from
+            <code> X</code>, while <code>digits.target</code> contains the correct labels from
+            <code> y</code>. If you get stuck, use the <strong>Hints</strong> beside the editor. Move
+            through them one at a time; the final hint contains complete code. Copying it is allowed,
+            but we recommend typing it yourself while using the hint as a reference.
           </p>
         </div>
+
+        <ol className={styles.labSteps} aria-label="Build your model in three steps">
+          <li>
+            <span>1</span>
+            <div><strong>Split the examples.</strong><p>Keep test answers out of training so the final score is honest.</p></div>
+          </li>
+          <li>
+            <span>2</span>
+            <div><strong>Fit the classifier.</strong><p>In scikit-learn, <code>fit</code> means let the model learn from <code>X_train</code> and <code>y_train</code>.</p></div>
+          </li>
+          <li>
+            <span>3</span>
+            <div><strong>Save, then run.</strong><p>Save the learned model as <code>model.joblib</code> so the playground can load it, then press the green button to run and score your code.</p></div>
+          </li>
+        </ol>
 
         <div className={styles.labLayout}>
           <div className={styles.editorColumn}>
@@ -489,99 +631,122 @@ export function DigitReaderLesson({
                 <span className={styles.pythonBadge}>Py</span>
                 <strong>solution.py</strong>
               </div>
-              <button
-                className={styles.trainButton}
-                type="button"
-                disabled={training || pendingTraining}
-                onClick={() => requestLab(true)}
-              >
-                <span aria-hidden="true">▶</span>
-                {training
-                  ? "Training…"
-                  : pendingTraining
-                    ? "Starting lab…"
-                    : "Train my model"}
-              </button>
+              <div className={styles.toolActions}>
+                <button
+                  className={styles.resetButton}
+                  type="button"
+                  disabled={training || pendingTraining || resetting}
+                  onClick={() => void resetWorkspace()}
+                >
+                  {resetting ? "Resetting…" : "Reset lab"}
+                </button>
+                <button
+                  className={styles.trainButton}
+                  type="button"
+                  disabled={training || pendingTraining || resetting}
+                  onClick={() => requestLab(true)}
+                >
+                  <span aria-hidden="true">▶</span>
+                  {training
+                    ? "Training…"
+                    : pendingTraining
+                      ? "Starting lab…"
+                      : "Train my model"}
+                </button>
+              </div>
             </div>
             <div className={styles.editorFrame}>
-              <CodeEditor value={code} onChange={changeCode} />
+              <CodeEditor key={workspaceVersion} value={code} onChange={changeCode} />
             </div>
           </div>
 
           <aside className={styles.hints} aria-label="Progressive coding hints">
             <div className={styles.hintsHeader}>
-              <span>Field notes</span>
-              <strong>{revealedHints} / 3 revealed</strong>
+              <span>Hints</span>
+              <strong>
+                {activeHintIndex + 1} / {handwrittenDigitExercise.hints.length}
+              </strong>
             </div>
-            {handwrittenDigitExercise.hints.slice(0, revealedHints).map((hint, index) => (
-              <article className={styles.hintCard} key={hint.title}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <h3>{hint.title}</h3>
-                <p>{hint.body}</p>
-                <pre><code>{hint.code}</code></pre>
-                {index === 2 ? (
-                  <div className={styles.hintActions}>
-                    <button type="button" onClick={copyCompleteCode}>
-                      {copied ? "Copied" : "Copy complete code"}
-                    </button>
-                    <button type="button" onClick={() => changeCode(handwrittenDigitExercise.completeCode)}>
-                      Use in editor
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            ))}
-            {revealedHints < handwrittenDigitExercise.hints.length ? (
+            <article className={styles.hintCard}>
+              <span>{String(activeHintIndex + 1).padStart(2, "0")}</span>
+              <h3>{handwrittenDigitExercise.hints[activeHintIndex].title}</h3>
+              <p>{handwrittenDigitExercise.hints[activeHintIndex].body}</p>
+              <pre><code>{handwrittenDigitExercise.hints[activeHintIndex].code}</code></pre>
+              {activeHintIndex === handwrittenDigitExercise.hints.length - 1 ? (
+                <div className={styles.hintActions}>
+                  <button type="button" onClick={copyCompleteCode}>
+                    {copied ? "Copied" : "Copy complete code"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changeCode(handwrittenDigitExercise.completeCode)}
+                  >
+                    Use in editor
+                  </button>
+                </div>
+              ) : null}
+            </article>
+            <nav className={styles.hintNavigation} aria-label="Choose a coding hint">
               <button
-                className={styles.revealHint}
                 type="button"
-                onClick={() => setRevealedHints((count) => count + 1)}
+                disabled={activeHintIndex === 0}
+                onClick={() => setActiveHintIndex((index) => Math.max(0, index - 1))}
               >
-                Reveal hint {revealedHints + 1}
-                <span aria-hidden="true">＋</span>
+                <span aria-hidden="true">←</span> Previous hint
               </button>
-            ) : null}
+              <button
+                type="button"
+                disabled={activeHintIndex === handwrittenDigitExercise.hints.length - 1}
+                onClick={() =>
+                  setActiveHintIndex((index) =>
+                    Math.min(handwrittenDigitExercise.hints.length - 1, index + 1),
+                  )
+                }
+              >
+                Next hint <span aria-hidden="true">→</span>
+              </button>
+            </nav>
           </aside>
-        </div>
 
-        <div className={styles.terminalCard}>
-          <div className={styles.toolHeader}>
-            <div>
-              <span className={styles.terminalIcon} aria-hidden="true">›_</span>
-              <strong>Training terminal</strong>
+          <div className={styles.terminalCard}>
+            <div className={styles.toolHeader}>
+              <div>
+                <span className={styles.terminalIcon} aria-hidden="true">›_</span>
+                <strong>Training terminal</strong>
+              </div>
+              <span className={styles.terminalStatus}>
+                <i className={terminalState === "ready" ? styles.readyStatus : undefined} />
+                {labStarted ? terminalStatus : "Not started"}
+              </span>
             </div>
-            <span className={styles.terminalStatus}>
-              <i className={terminalState === "ready" ? styles.readyStatus : undefined} />
-              {labStarted ? terminalStatus : "Not started"}
-            </span>
-          </div>
-          <div className={styles.terminalFrame}>
-            {!authConfigured ? (
-              <div className={styles.labGate}>
-                <span className={styles.gateIcon}>!</span>
-                <h3>Authentication is not configured</h3>
-                <p>Add the required environment variables before starting the protected lab.</p>
-              </div>
-            ) : !authenticated ? (
-              <div className={styles.labGate}>
-                <span className={styles.gateIcon}>⌁</span>
-                <h3>The lesson is free. Compute is protected.</h3>
-                <p>Enter the family passphrase before starting a Modal sandbox or using My model.</p>
-                <button type="button" onClick={() => requestLab(false)}>Unlock Python lab</button>
-              </div>
-            ) : !labStarted ? (
-              <div className={styles.labGate}>
-                <span className={styles.gateIcon}>▶</span>
-                <h3>Ready when you are</h3>
-                <p>Starting the lab creates or reconnects your private Modal sandbox.</p>
-                <button type="button" onClick={() => requestLab(false)}>Start lab</button>
-              </div>
-            ) : (
-              <InteractiveTerminal
-                onControllerChange={handleTerminalControllerChange}
-                onStateChange={setTerminalState}
-              />
-            )}
+            <div className={styles.terminalFrame}>
+              {!authConfigured ? (
+                <div className={styles.labGate}>
+                  <span className={styles.gateIcon}>!</span>
+                  <h3>Authentication is not configured</h3>
+                  <p>Add the required environment variables before starting the protected lab.</p>
+                </div>
+              ) : !authenticated ? (
+                <div className={styles.labGate}>
+                  <span className={styles.gateIcon}>⌁</span>
+                  <h3>The lesson is free. Compute is protected.</h3>
+                  <p>Enter the family passphrase before starting a private sandbox or using My model.</p>
+                  <button type="button" onClick={() => requestLab(false)}>Unlock Python lab</button>
+                </div>
+              ) : !labStarted ? (
+                <div className={styles.labGate}>
+                  <span className={styles.gateIcon}>▶</span>
+                  <h3>Ready when you are</h3>
+                  <p>Start the lab to create or reconnect your temporary private computer.</p>
+                  <button type="button" onClick={() => requestLab(false)}>Start lab</button>
+                </div>
+              ) : (
+                <InteractiveTerminal
+                  onControllerChange={handleTerminalControllerChange}
+                  onStateChange={setTerminalState}
+                />
+              )}
+            </div>
           </div>
         </div>
 
@@ -610,8 +775,8 @@ export function DigitReaderLesson({
       </section>
 
       <footer className={styles.footer}>
-        <span className={styles.brandMark}>LM</span>
-        <div><strong>One model trained. Many experiments ahead.</strong><small>More LeetML labs are being built.</small></div>
+        <span className={styles.brandMark}>HR</span>
+        <div><strong>One model trained. Many experiments ahead.</strong><small>More learning labs are being built.</small></div>
         <a href="#problem">Run the lesson again ↑</a>
       </footer>
     </main>

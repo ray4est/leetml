@@ -1,6 +1,6 @@
-# LeetML
+# Handwriting Reader Lab
 
-LeetML v0 is one interactive handwritten-digit lesson. A learner can explore a ready-made model, draw digits, edit Python in Monaco, train a scikit-learn model in a private Modal Sandbox, and use that model in the same playground.
+Handwriting Reader Lab is one protected, interactive machine-learning lesson. A learner can explore a ready-made model, draw digits, edit Python in Monaco, train a scikit-learn model in a private Modal Sandbox, and use that model in the same playground.
 
 ## Prerequisites
 
@@ -42,11 +42,13 @@ npm run dev
 
 ## Lesson behavior
 
+The opening mission asks the learner to understand the concepts, train a model, test both supplied images and their own handwriting, and find at least one correct and one incorrect handwriting prediction.
+
 The single page has three sections:
 
-1. **Problem** challenges the learner to imagine handwritten rules for recognizing every possible digit, explains `X`, `y`, and the train/test split through a study-and-quiz analogy, then introduces three-nearest-neighbours.
-2. **Playground** offers 20 held-out digit images and a direct 8 × 8 pixel drawing canvas. The built-in distance-weighted `KNeighborsClassifier` equivalent runs entirely in the browser, so it is public and does not spend Modal budget. Every built-in prediction reveals the three closest labelled study digits; a prediction on a supplied quiz image also reveals its true label.
-3. **Do it yourself** provides an editable Monaco editor, three progressive hints, and a terminal below it. The final hint can be copied or inserted as a complete solution.
+1. **Problem** compares ordinary programming with machine learning, introduces each required term, explains features and ground truth, and teaches the train/test split through a study-and-quiz analogy. An interactive data explorer shows any sample as an image, an 8 × 8 number grid, a Python array, and its answer.
+2. **Playground** offers 20 held-out digit images and a direct 8 × 8 pixel drawing canvas. The built-in distance-weighted `KNeighborsClassifier` equivalent runs entirely in the browser and does not spend Modal budget. Every prediction reveals the three closest labelled study digits.
+3. **Do it yourself** provides action-and-reason instructions, an editable Monaco editor, and one navigable hint at a time beside it. Copying the complete hint is allowed, but the lesson recommends typing the code while using hints as a reference. The terminal is stacked directly below the editor. **Reset lab** deletes the current sandbox, code, and trained model before restoring the complete starter state.
 
 Selecting **Start lab** or **Train my model** is the first action that can provision Modal. Training saves Monaco to `/workspace/solution.py` and sends this command through xterm.js:
 
@@ -60,11 +62,13 @@ The terminal remains a normal bash shell in `/workspace`. Monaco is the source o
 
 ## Authentication and budget protection
 
-The explanation, built-in playground, drawing canvas, editor, and hints are public. Terminal access, source saving, training, model status, and custom-model predictions require the shared family passphrase.
+The entire lab page—including the explanation, playground, editor, hints, and terminal—is protected by the shared family passphrase. An unauthenticated request to `/` is redirected to `/login` before any lab markup is rendered.
+
+Authentication alone does not provision Modal. **Start lab** or **Train my model** remains the first action that can create or reconnect a sandbox, so viewing the protected lesson and using the built-in browser model do not spend Modal compute budget.
 
 A successful login creates a signed HTTP-only cookie lasting 30 days. It uses `SameSite=Strict` and is also `Secure` in production. The shared-passphrase design does not create individual identities or enforce a literal two-account limit; budget protection depends on keeping the passphrase private.
 
-Only `/#do-it-yourself` is accepted as a post-login return target. External or malformed destinations fall back to `/`. Changing `APP_ACCESS_PASSWORD` does not revoke cookies already issued; changing `SESSION_SECRET` invalidates all sessions.
+The normal post-login destination is `/`; `/#do-it-yourself` is also accepted when an in-progress session expires. External or malformed destinations fall back to `/`. Changing `APP_ACCESS_PASSWORD` does not revoke cookies already issued; changing `SESSION_SECRET` invalidates all sessions.
 
 ## Runtime and lifecycle
 
@@ -74,29 +78,33 @@ Each authenticated browser session receives a named Modal Sandbox with:
 - One CPU, 1 GiB reserved memory, and a 2 GiB hard limit
 - No outbound network access
 - A 10-minute foreground-command limit
-- One-hour inactivity termination and a 24-hour absolute lifetime
+- Three-hour inactivity termination and a 24-hour absolute lifetime
 
-Terminal input/output and custom-model predictions count as activity. Merely reading the page or using the built-in browser model does not. The sandbox and `model.joblib` disappear after one inactive hour, infrastructure failure, the absolute limit, or logout. Reconnecting during its lifetime starts a fresh bash process but preserves its files.
+Terminal input/output and custom-model predictions count as activity. Merely reading the page or using the built-in browser model does not. The sandbox and `model.joblib` disappear after three inactive hours, infrastructure failure, the absolute limit, reset, or logout. Reconnecting during its lifetime starts a fresh bash process but preserves its files.
 
 Only one terminal connection is active per sandbox. A newer tab replaces the previous shell. The browser connects directly using a short-lived Modal Connect Token held only in component memory.
 
 ## Manual acceptance test
 
-1. Open `/` signed out. Confirm the Problem, Playground, and Do it yourself sections render, and confirm the Network panel shows no request to `/api/prepare`.
-2. Pick several test images with **LeetML KNN**, press **Predict digit**, and confirm each result reveals the prediction, hidden answer, and three nearest labelled study digits with distances.
-3. Open **Draw your own**, paint a digit directly into the 8 × 8 grid, and confirm the exact model input appears before predicting. Clear it and confirm prediction is disabled.
-4. Edit `solution.py`, reveal all three hints, and use **Use in editor**. Reload before signing in and confirm the draft remains in this tab.
-5. Press **Start lab** or **Train my model**, enter the family passphrase, and confirm you return to `/#do-it-yourself` without losing the draft.
-6. Press **Start lab** if needed. Wait for the colored `ray@leetml` prompt, then run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
-7. Restore the starter code and press **Train my model**. Confirm the terminal shows the `NotImplementedError` and the playground remains on the built-in model.
-8. Insert the complete hint and train again. Confirm the terminal reports an accuracy near 98.4%, **My model is ready** appears, and the page returns to the Playground with **My model** selected.
-9. Predict a supplied image and a drawing with **My model**. Confirm both predictions return, the trained KNN exposes three neighbours, and supplied images still reveal their true labels.
-10. Change `n_neighbors`, retrain, and confirm the displayed accuracy and model timestamp update.
-11. Use the terminal as a shell. Run `sleep 60`, press **Train my model**, and confirm it interrupts the foreground command before training.
-12. Reload, press **Start lab**, and confirm the existing model is still available while the sandbox is alive.
-13. Open a second tab and confirm it takes over the terminal. Reconnect from the first tab to take it back.
-14. Visit `/tasks/handwritten-digit-reader` and confirm it redirects to `/#do-it-yourself`.
-15. Sign out, confirm the lab locks, and confirm the prior custom model is gone after signing in and starting a new sandbox.
+1. Open `/` signed out. Confirm it redirects to `/login`, no Problem, Playground, editor, or hints content is present, and the Network panel shows no request to `/api/prepare`. Sign in and confirm **Handwriting Reader Lab** and all three lesson sections render without preparing a sandbox.
+2. Confirm the top of the lesson states the full mission: understand the concepts, train a model, test sample images and personal handwriting, and find both a correct and an incorrect handwriting prediction. Then read the Problem in order and confirm machine learning, training, model, prediction, data, feature, ground truth, label, train/test data, KNN, `k`, and distance are each defined before later instructions use them.
+3. In **Sample data explorer**, switch between Study data and Test data, choose several samples, and confirm each shows the image, 64 numbered grayscale features, Python array, and ground-truth answer.
+4. Pick several test images with **Built-in KNN**, press **Predict digit**, and confirm each result reveals the prediction, hidden answer, and three nearest labelled study digits with distances.
+5. Open **Draw your own**, paint a digit directly into the 8 × 8 grid, and confirm the exact model input appears before predicting. Clear it and confirm prediction is disabled.
+6. Confirm **Hints** is horizontally aligned beside the editor, only one hint appears at a time, and **Previous hint** and **Next hint** navigate all three. Confirm the instructions allow copying but recommend typing from the hint. On the final hint, use **Use in editor**. Reload and confirm the draft remains in this tab.
+7. Confirm the terminal is stacked below the editor, rather than below the Hints column.
+8. Press **Start lab** or **Train my model** and confirm this is the first action that requests `/api/prepare`.
+9. Press **Start lab** if needed. Wait for the colored `ray@leetml` prompt, then run `pwd`, `python --version`, and `python -c "import sklearn; print(sklearn.__version__)"`.
+10. Restore the starter code and press **Train my model**. Confirm the terminal shows the `NotImplementedError` and the playground remains on the built-in model.
+11. Insert the complete hint and train again. Confirm the terminal reports an accuracy near 98.4%, **My model is ready** appears, and the page returns to the Playground with **My model** selected.
+12. Predict a supplied image and a drawing with **My model**. Confirm both predictions return, the trained KNN exposes three neighbours, and supplied images still reveal their true labels.
+13. Change `n_neighbors`, retrain, and confirm the displayed accuracy and model timestamp update.
+14. Select **Reset lab**, confirm the warning, and verify the terminal closes, the editor returns to starter code with a fresh undo history, Hints returns to the first hint, drawings/results clear, and **My model** locks. Start again and confirm the old files are absent.
+15. Use the terminal as a shell. Run `sleep 60`, press **Train my model**, and confirm it interrupts the foreground command before training.
+16. Reload, press **Start lab**, and confirm the existing model is still available while the sandbox is alive.
+17. Open a second tab and confirm it takes over the terminal. Reconnect from the first tab to take it back.
+18. Visit `/tasks/handwritten-digit-reader` and confirm it redirects to `/#do-it-yourself`.
+19. Sign out, confirm `/` redirects to `/login` and exposes no lab content, then sign in and start a new sandbox to confirm the prior custom model is gone.
 
 To verify network isolation, run this in the sandbox and confirm it fails:
 

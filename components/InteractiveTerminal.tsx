@@ -340,7 +340,7 @@ export function InteractiveTerminal({
 
           if (parsed.type === "shutdown") {
             reconnectSuppressed = true;
-            writeNotice("The sandbox stopped after one hour without terminal activity.");
+            writeNotice("The sandbox stopped after three hours without terminal activity.");
             return;
           }
 
@@ -364,7 +364,7 @@ export function InteractiveTerminal({
           if (replaced) {
             writeNotice("This terminal was replaced by a newer tab. Reconnect to take control.");
           } else if (inactive) {
-            writeNotice("The sandbox stopped after one hour without terminal activity.");
+            writeNotice("The sandbox stopped after three hours without terminal activity.");
           } else {
             writeNotice("Terminal disconnected. Reconnecting…");
             scheduleReconnect(1_000);

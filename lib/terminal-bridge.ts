@@ -1,6 +1,6 @@
 export const TERMINAL_PORT = 8080;
 export const TERMINAL_COMMAND_TIMEOUT_SECONDS = 10 * 60;
-export const TERMINAL_IDLE_TIMEOUT_SECONDS = 60 * 60;
+export const TERMINAL_IDLE_TIMEOUT_SECONDS = 3 * 60 * 60;
 
 export const TERMINAL_BRIDGE_SOURCE = String.raw`
 import asyncio
@@ -20,7 +20,7 @@ from websockets.asyncio.server import serve
 PORT = int(os.environ.get("LEETML_TERMINAL_PORT", "8080"))
 EXPECTED_SESSION = os.environ["LEETML_SESSION_ID"]
 COMMAND_TIMEOUT = float(os.environ.get("LEETML_COMMAND_TIMEOUT_SECONDS", "600"))
-IDLE_TIMEOUT = float(os.environ.get("LEETML_IDLE_TIMEOUT_SECONDS", "3600"))
+IDLE_TIMEOUT = float(os.environ.get("LEETML_IDLE_TIMEOUT_SECONDS", "10800"))
 WORKDIR = "/workspace"
 ACTIVITY_PATH = os.path.join(WORKDIR, ".leetml-activity")
 MAX_INPUT_BYTES = 64 * 1024

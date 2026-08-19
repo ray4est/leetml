@@ -30,7 +30,7 @@ print(f"Trained on {len(X_train)} labelled images.")
 
 export const handwrittenDigitExercise = {
   id: "handwritten-digit-lab-v2",
-  title: "Train your own digit reader",
+  title: "Train your own handwriting reader",
   starterCode: `from joblib import dump
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
@@ -52,7 +52,7 @@ raise NotImplementedError("Finish the three training steps, then run again.")
     {
       title: "Hint 1 · Make practice and quiz piles",
       body:
-        "Split the labelled images into training data the model may study and test data it must not see while learning. Use the same random_state and stratify values so your score is comparable.",
+        "Split the labelled images into training data the model may study and test data it must not see while learning. test_size=0.25 saves one quarter for the test. random_state=42 repeats the same shuffle every run. stratify=digits.target keeps roughly the same share of every digit in both piles, making scores easier to compare.",
       code: `X_train, X_test, y_train, y_test = train_test_split(
     digits.data,
     digits.target,
@@ -64,7 +64,7 @@ raise NotImplementedError("Finish the three training steps, then run again.")
     {
       title: "Hint 2 · Teach, then save",
       body:
-        "A classifier starts with an algorithm but no knowledge of these images. fit gives it pixels and answers; dump preserves the learned model for the playground.",
+        "A classifier starts with an algorithm but no knowledge of these images. n_neighbors=3 chooses three nearby voters, weights=\"distance\" gives closer images a stronger vote, fit supplies the pixels and answers, and dump saves the learned model for the playground.",
       code: `model = KNeighborsClassifier(n_neighbors=3, weights="distance")
 model.fit(X_train, y_train)
 dump(model, "model.joblib")`,
@@ -72,7 +72,7 @@ dump(model, "model.joblib")`,
     {
       title: "Hint 3 · Complete solution",
       body:
-        "This is one complete solution. Copy it, run it, then experiment with n_neighbors or a different scikit-learn classifier.",
+        "This is one complete solution. Copy it and run it. Then experiment with n_neighbors—the code name for k, the number of nearby voters—or try a different scikit-learn classifier.",
       code: completeCode,
     },
   ],

@@ -1,26 +1,19 @@
 import { DigitReaderLesson } from "@/components/DigitReaderLesson";
 import { AuthConfigurationError, hasValidSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   let authenticated = false;
-  let authConfigured = true;
 
   try {
     authenticated = await hasValidSession();
   } catch (error) {
-    if (error instanceof AuthConfigurationError) {
-      authConfigured = false;
-    } else {
-      throw error;
-    }
+    if (!(error instanceof AuthConfigurationError)) throw error;
   }
 
-  return (
-    <DigitReaderLesson
-      authenticated={authenticated}
-      authConfigured={authConfigured}
-    />
-  );
+  if (!authenticated) redirect("/login");
+
+  return <DigitReaderLesson authenticated authConfigured />;
 }

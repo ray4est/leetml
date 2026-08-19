@@ -24,6 +24,19 @@ type NeighborCandidate = {
 
 export const digitGallery: readonly DigitSample[] = browserDigitModel.gallery;
 export const browserModelAccuracy = browserDigitModel.accuracy;
+export const digitTrainingGallery: readonly DigitSample[] = Array.from(
+  { length: 10 },
+  (_, label) =>
+    browserDigitModel.trainingLabels
+      .map((trainingLabel, index) => ({ trainingLabel, index }))
+      .filter(({ trainingLabel }) => trainingLabel === label)
+      .slice(0, 2)
+      .map(({ index }, example) => ({
+        id: `training-${label}-${example + 1}`,
+        label,
+        pixels: browserDigitModel.trainingPixels[index],
+      })),
+).flat();
 
 function assertDigitPixels(pixels: readonly number[]) {
   if (
